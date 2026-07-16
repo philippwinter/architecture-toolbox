@@ -15,6 +15,14 @@ npm run dev
 
 Der Development-Server unterstützt Hot Reloading. Die Anwendung startet mit einem kommentierten Beispieldokument und speichert YAML sowie Collapse-Zustand getrennt im lokalen Browser-Speicher.
 
+## Standalone-Build ohne Webserver
+
+```bash
+npm run build:standalone
+```
+
+Der Befehl erzeugt `dist-standalone/index.html`. JavaScript, CSS und weitere Assets sind vollständig in diese eine Datei eingebettet. Sie kann direkt über den Dateimanager oder eine `file://`-Adresse in einem unterstützten Browser geöffnet und ohne Webserver verwendet werden.
+
 ## Qualitätsprüfungen
 
 ```bash
@@ -22,6 +30,7 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npm run build:standalone
 ```
 
 Optionale browserübergreifende End-to-End-Tests:

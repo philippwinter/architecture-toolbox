@@ -480,6 +480,7 @@ Die Implementierung muss mindestens folgende Skripte anbieten:
 
 - Development-Server mit Hot Reloading;
 - Produktions-Build;
+- Standalone-Build als einzelne HTML-Datei mit eingebettetem CSS, JavaScript und sonstigen Assets, die direkt über `file://` ohne Webserver lauffähig ist;
 - Linting;
 - Typecheck ohne Ausgabe;
 - Unit-/Komponententests;

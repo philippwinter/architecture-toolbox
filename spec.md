@@ -1,6 +1,6 @@
 # Capability Map Renderer – Spezifikation
 
-Status: MVP-Spezifikation v0.2
+Status: MVP-Spezifikation v0.3
 Stand: 16. Juli 2026
 Ziel: Umsetzungsreife Spezifikation für ein erstes MVP
 
@@ -25,6 +25,7 @@ Das MVP muss:
 9. als statische Webanwendung ohne Backend betrieben werden können.
 10. eine getrennte Rendering-Schicht besitzen, die später als wiederverwendbare TypeScript-Bibliothek extrahiert oder veröffentlicht werden kann.
 11. TypeScript, Linting, automatisierte Tests und Hot Reloading unterstützen.
+12. Top-Level-Capabilities optional in rein visuellen, einklappbaren Gruppen strukturieren können.
 
 ## 3. Nicht-Ziele des MVP
 
@@ -146,7 +147,7 @@ map:
 | `map.name` | String | ja | Anzeigename der Map |
 | `map.description` | String | nein | Kurzbeschreibung der Map |
 | `map.theme.defaultColor` | RGB-Hex-String | nein | Standard-Hintergrundfarbe für Capabilities |
-| `map.capabilities` | Capability-Liste | ja | Geordnete Liste der Wurzel-Capabilities; mindestens ein Eintrag |
+| `map.capabilities` | Root-Element-Liste | ja | Geordnete Liste aus Wurzel-Capabilities und/oder Gruppen; mindestens ein Eintrag |
 
 ### 6.4 Capability-Felder
 
@@ -167,6 +168,37 @@ map:
 | `children` | Capability-Liste | nein | Rekursive, geordnete Unterfähigkeiten |
 
 Leere optionale Listen und Objekte werden akzeptiert und bei der Normalisierung entfernt. IDs sollen dem Muster `[a-zA-Z0-9][a-zA-Z0-9._-]*` entsprechen.
+
+### 6.5 Gruppenfelder
+
+Gruppen sind ausschließlich als direkte Einträge von `map.capabilities` erlaubt. Sie werden durch `type: group` von normalen Capabilities unterschieden und enthalten mindestens eine Capability.
+
+| Feld | Typ | Pflicht | Standard / Bedeutung |
+| --- | --- | --- | --- |
+| `type` | `group` | ja | Kennzeichnet das Root-Element als Gruppe |
+| `id` | String | ja | Global gegenüber Gruppen und Capabilities eindeutige ID |
+| `name` | nicht leerer String | ja | Sichtbarer Gruppenname im aufgeklappten Zustand |
+| `visualization.backgroundColor` | RGB-Hex-String `#RRGGBB` | nein | Dezente Containerfarbe; eingebaute Standardfarbe bei fehlender Angabe |
+| `layout.direction` | `vertical` oder `horizontal` | nein | Standard: `vertical`; Root-Anordnung und Position des Gruppennamens |
+| `layout.weight` | positive Zahl | nein | Standard: `1`; relative Höhe oder Breite gemäß Root-Layoutregel |
+| `layout.trackWeight` | positive Zahl | nein | Standard: `1`; relative Breite eines horizontalen Root-Blocks |
+| `capabilities` | Capability-Liste | ja | Mindestens eine direkt enthaltene Capability |
+
+```yaml
+- type: group
+  id: management-group
+  name: Management Capabilities
+  visualization:
+    backgroundColor: "#E9F1F8"
+  layout:
+    direction: horizontal
+    trackWeight: 1.15
+  capabilities:
+    - id: strategy
+      name: Strategy
+    - id: governance
+      name: Governance
+```
 
 ## 7. Layout-Semantik
 
@@ -231,6 +263,18 @@ Bei Standardgewichten sind die vier Tracks gleich breit; die drei beziehungsweis
 
 Die konkrete Mindestgröße wird in der Implementierung als zentraler Design-Token festgelegt und durch visuelle Tests abgesichert.
 
+### 7.5 Top-Level-Gruppen
+
+- Gruppen nehmen auf Root-Ebene wie Capabilities am bestehenden Track-Algorithmus teil; `direction`, `weight` und `trackWeight` haben dieselbe Platzierungssemantik.
+- Die Richtung verändert nicht das interne Layout der enthaltenen Capabilities. Diese behalten ihre eigenen, gemischten Layoutwerte.
+- Bei `vertical` steht der Gruppenname in einem reservierten Bereich oberhalb der Capabilities.
+- Bei `horizontal` steht der Gruppenname in einem reservierten Bereich links neben den Capabilities.
+- Gruppen besitzen außer Name, Layout und Hintergrundfarbe keine fachlichen Inhalte oder Metadaten.
+- Die Gruppenfarbe wird nicht an enthaltene Capabilities vererbt.
+- Eingeklappte `vertical`-Gruppen bleiben als schmale Säule sichtbar; eingeklappte `horizontal`-Gruppen als flache Ebene.
+- Im eingeklappten Zustand wird kein Gruppenname dargestellt. Der gesamte farbige Platzhalter dient als Aufklappfläche mit technischem Tooltip beziehungsweise zugänglichem Namen; ein eigener sichtbarer Button oder ein Chevron wird nicht gerendert.
+- Gruppen sind nicht auswählbar, nicht fokussierbar und öffnen kein Detailpanel.
+
 ## 8. Darstellungsregeln
 
 ### 8.1 Vererbung
@@ -270,10 +314,11 @@ Die Suche berücksichtigt mindestens `name`, `description`, `owner`, `responsibi
 - Passt ein Nachfahre, bleiben alle notwendigen Ahnen als Kontext sichtbar.
 - Ein nur als Kontext sichtbarer Ahne wird optisch von einem direkten Treffer unterschieden.
 - Leere Trefferlisten zeigen einen erklärenden Leerzustand und eine Aktion „Filter zurücksetzen“.
+- Gruppen sind keine eigenen Filtertreffer. Enthält eine Gruppe keine passenden Capabilities, bleibt sie als kompakter struktureller Platzhalter sichtbar.
 
 ### 9.3 Ein-/Ausklappen
 
-Der Einklappzustand wird über Capability-IDs verwaltet und als separater UI-Zustand in `localStorage` gespeichert. Er ist kein Bestandteil des YAML und darf beim Speichern oder Exportieren des YAML niemals dort hineingeschrieben werden. Zustände für IDs, die im aktuellen Dokument nicht mehr vorkommen, werden beim Laden verworfen. Filter dürfen notwendige Ahnen temporär öffnen, verändern aber nicht den gespeicherten manuellen Einklappzustand.
+Der Einklappzustand wird getrennt über Capability- und Gruppen-IDs verwaltet und als separater UI-Zustand in `localStorage` gespeichert. Er ist kein Bestandteil des YAML und darf beim Speichern oder Exportieren des YAML niemals dort hineingeschrieben werden. Zustände für IDs, die im aktuellen Dokument nicht mehr vorkommen, werden beim Laden verworfen. Filter oder Suche dürfen notwendige Capability-Ahnen und Gruppen temporär öffnen, verändern aber nicht den gespeicherten manuellen Einklappzustand. Gruppen verschwinden niemals vollständig.
 
 ### 9.4 Fokusmodus
 
@@ -334,7 +379,7 @@ Semantisch validiert werden mindestens:
 
 - Der aktuelle Editorinhalt wird nach Änderungen automatisch in `localStorage` gespeichert.
 - YAML-Text und UI-Zustand werden als getrennte Einträge gespeichert.
-- Der UI-Zustand des MVP enthält ausschließlich die manuell eingeklappten Capability-IDs.
+- Der UI-Zustand des MVP enthält ausschließlich die getrennt gespeicherten, manuell eingeklappten Capability- und Gruppen-IDs.
 - Fokus, Auswahl, Suche und aktive Filter werden nicht sitzungsübergreifend gespeichert.
 - Gespeicherte Daten tragen jeweils eine interne Speicher- und Schema-Version.
 - Beim Start wird zuerst der lokale Stand geladen.
@@ -456,6 +501,7 @@ Besonders vollständig zu testen sind:
 - Wechselwirkung zwischen Filter und manuellem Collapse;
 - Fokus und Breadcrumb-Pfade;
 - semantische Zoom-Entscheidung bei Platzmangel.
+- Schema, Vererbung, Ausrichtung und Collapse-Platzhalter von Top-Level-Gruppen.
 
 ### 15.2 Komponenten- und Integrationstests
 
@@ -464,12 +510,14 @@ Besonders vollständig zu testen sind:
 - Auswahl öffnet das korrekte Detailpanel;
 - Reset und Wiederherstellung aus `localStorage`;
 - Filter-, Suche-, Collapse- und Fokusabläufe.
+- horizontales und vertikales Gruppen-Rendering einschließlich getrenntem Collapse-Zustand.
 
 ### 15.3 End-to-End- und visuelle Tests
 
 - Start mit Beispiel bis zur interaktiven Map;
 - fehlerhafte und anschließend korrigierte YAML-Eingabe;
 - Referenzbeispiel für das Layout `[H,H,H,V,V,H,H]`;
+- horizontale und vertikale Gruppen sowie ihre schmalen Collapse-Platzhalter;
 - tiefer verschachtelte Map mit semantischem Zoom;
 - Desktopansicht und Tablet-Umschaltung;
 - kritische Abläufe in Chromium, Firefox und WebKit.
@@ -493,6 +541,7 @@ Das MVP gilt als abgenommen, wenn:
 13. Desktop-Browser und Tablet-Darstellung gemäß Zielrahmen getestet sind;
 14. Linting, Typecheck, automatisierte Tests und Produktions-Build erfolgreich durchlaufen;
 15. die Map keine grafische Bearbeitung zulässt und vollständig aus dem YAML reproduzierbar ist.
+16. gruppierte und ungruppierte Root-Capabilities gemeinsam darstellbar sind, Gruppenfarben nicht vererbt werden und eingeklappte Gruppen als schmale namenlose Struktur sichtbar bleiben.
 
 ## 17. Ausbaustufen
 
@@ -524,3 +573,4 @@ Für den späteren PowerPoint-Export sind insbesondere Exportumfang (vollständi
 2. Das MVP liefert ausschließlich ein helles Theme aus. Zentrale Design-Tokens bereiten spätere Themes vor.
 3. Metadatenfilter entstehen automatisch aus vorhandenen filterbaren Werten; das YAML enthält im MVP keine Filterkonfiguration.
 4. Der manuelle Collapse-Zustand wird separat in `localStorage`, niemals im YAML, gespeichert. Fokus, Auswahl, Suche und Filter werden beim Neuladen zurückgesetzt.
+5. Top-Level-Gruppen enthalten mindestens eine Capability, bleiben bei Filtern immer strukturell sichtbar und zeigen im eingeklappten Zustand nur einen schmalen farbigen Platzhalter ohne Namen.

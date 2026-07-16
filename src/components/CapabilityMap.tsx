@@ -63,6 +63,7 @@ function MapCanvas({
             group: item.group,
             collapsed: item.collapsed,
             autoCollapsed: item.autoCollapsed,
+            labelSize: layoutNode.labelSize,
             onToggle: onToggleGroup,
           },
         };

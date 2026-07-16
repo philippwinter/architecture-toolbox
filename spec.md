@@ -268,11 +268,13 @@ Die konkrete Mindestgröße wird in der Implementierung als zentraler Design-Tok
 - Gruppen nehmen auf Root-Ebene wie Capabilities am bestehenden Track-Algorithmus teil; `direction`, `weight` und `trackWeight` haben dieselbe Platzierungssemantik.
 - Die Richtung verändert nicht das interne Layout der enthaltenen Capabilities. Diese behalten ihre eigenen, gemischten Layoutwerte.
 - Bei `vertical` steht der Gruppenname in einem reservierten Bereich oberhalb der Capabilities.
-- Bei `horizontal` steht der Gruppenname in einem reservierten Bereich links neben den Capabilities.
+- Bei `horizontal` steht der Gruppenname in einem schmalen reservierten Bereich links neben den Capabilities. Im ausgeklappten Zustand wird er vertikal und ohne Umbruch gesetzt.
 - Gruppen besitzen außer Name, Layout und Hintergrundfarbe keine fachlichen Inhalte oder Metadaten.
 - Die Gruppenfarbe wird nicht an enthaltene Capabilities vererbt.
 - Eingeklappte `vertical`-Gruppen bleiben als schmale Säule sichtbar; eingeklappte `horizontal`-Gruppen als flache Ebene.
-- Im eingeklappten Zustand wird kein Gruppenname dargestellt. Der gesamte farbige Platzhalter dient als Aufklappfläche mit technischem Tooltip beziehungsweise zugänglichem Namen; ein eigener sichtbarer Button oder ein Chevron wird nicht gerendert.
+- Besteht ein horizontaler Root-Track ausschließlich aus eingeklappten Gruppen, wird seine durch `trackWeight` bestimmte Breite freigegeben. Der Track behält nur die für den vollständigen längsten Gruppennamen erforderliche Breite; die übrigen Root-Tracks teilen den frei gewordenen Platz gemäß ihren Gewichten neu untereinander auf.
+- Der Gruppenname wird stets vollständig und ohne Ellipse dargestellt. Der reservierte Namensbereich wächst bei Bedarf; in einer eingeklappten vertikalen Gruppe wird der Name platzsparend vertikal gesetzt.
+- Im eingeklappten Zustand dient der gesamte farbige Platzhalter samt Gruppenname als Aufklappfläche mit technischem Tooltip beziehungsweise zugänglichem Namen; ein eigener sichtbarer Button oder ein Chevron wird nicht gerendert.
 - Gruppen sind nicht auswählbar, nicht fokussierbar und öffnen kein Detailpanel.
 
 ## 8. Darstellungsregeln
@@ -541,7 +543,7 @@ Das MVP gilt als abgenommen, wenn:
 13. Desktop-Browser und Tablet-Darstellung gemäß Zielrahmen getestet sind;
 14. Linting, Typecheck, automatisierte Tests und Produktions-Build erfolgreich durchlaufen;
 15. die Map keine grafische Bearbeitung zulässt und vollständig aus dem YAML reproduzierbar ist.
-16. gruppierte und ungruppierte Root-Capabilities gemeinsam darstellbar sind, Gruppenfarben nicht vererbt werden und eingeklappte Gruppen als schmale namenlose Struktur sichtbar bleiben.
+16. gruppierte und ungruppierte Root-Capabilities gemeinsam darstellbar sind, Gruppenfarben nicht vererbt werden und eingeklappte Gruppen als schmale, vollständig beschriftete Struktur sichtbar bleiben.
 
 ## 17. Ausbaustufen
 
@@ -573,4 +575,4 @@ Für den späteren PowerPoint-Export sind insbesondere Exportumfang (vollständi
 2. Das MVP liefert ausschließlich ein helles Theme aus. Zentrale Design-Tokens bereiten spätere Themes vor.
 3. Metadatenfilter entstehen automatisch aus vorhandenen filterbaren Werten; das YAML enthält im MVP keine Filterkonfiguration.
 4. Der manuelle Collapse-Zustand wird separat in `localStorage`, niemals im YAML, gespeichert. Fokus, Auswahl, Suche und Filter werden beim Neuladen zurückgesetzt.
-5. Top-Level-Gruppen enthalten mindestens eine Capability, bleiben bei Filtern immer strukturell sichtbar und zeigen im eingeklappten Zustand nur einen schmalen farbigen Platzhalter ohne Namen.
+5. Top-Level-Gruppen enthalten mindestens eine Capability, bleiben bei Filtern immer strukturell sichtbar und zeigen ihren vollständigen Namen auch im eingeklappten farbigen Platzhalter.

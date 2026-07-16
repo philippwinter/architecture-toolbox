@@ -36,13 +36,14 @@ function group(
   direction: 'horizontal' | 'vertical',
   capabilities: VisibleCapability[],
   collapsed = false,
+  trackWeight?: number,
 ): VisibleCapabilityGroup {
   const normalized: NormalizedCapabilityGroup = {
     kind: 'group',
     id,
     name: id,
     backgroundColor: '#eeeeee',
-    layout: { direction, weight: 1 },
+    layout: { direction, weight: 1, trackWeight },
     capabilities: capabilities.map((entry) => entry.capability),
     capabilityCount: capabilities.length,
   };
@@ -165,12 +166,12 @@ describe('capability layout', () => {
 
     const horizontal = layoutRootItems(
       [group('horizontal-group', 'horizontal', [item('child', 'vertical')])],
-      { width: 400, height: 300, gap: 0, padding: 10, groupLabelWidth: 120 },
+      { width: 400, height: 300, gap: 0, padding: 10, groupHeaderHeight: 40 },
     );
     expect(horizontal[1]).toMatchObject({
       kind: 'capability',
       parentId: 'horizontal-group',
-      rect: { x: 120, y: 10, width: 270, height: 280 },
+      rect: { x: 50, y: 10, width: 340, height: 280 },
     });
   });
 
@@ -197,5 +198,29 @@ describe('capability layout', () => {
     expect(byId.get('vertical-group')?.width).toBe(20);
     expect(byId.has('hidden-a')).toBe(false);
     expect(byId.has('hidden-b')).toBe(false);
+  });
+
+  it('releases the trackWeight space of a fully collapsed horizontal group track', () => {
+    const roots = [
+      group('h', 'horizontal', [item('hidden', 'vertical')], true, 4),
+      item('visible-a', 'vertical'),
+      item('visible-b', 'vertical'),
+    ];
+    const layout = layoutRootItems(roots, {
+      width: 600,
+      height: 300,
+      gap: 0,
+      groupLabelWidth: 80,
+    });
+    const byId = new Map(
+      layout.map((node) => [
+        node.kind === 'group' ? node.item.group.id : node.item.capability.id,
+        node.rect,
+      ]),
+    );
+
+    expect(byId.get('h')).toEqual({ x: 0, y: 0, width: 80, height: 22 });
+    expect(byId.get('visible-a')).toEqual({ x: 80, y: 0, width: 260, height: 300 });
+    expect(byId.get('visible-b')).toEqual({ x: 340, y: 0, width: 260, height: 300 });
   });
 });

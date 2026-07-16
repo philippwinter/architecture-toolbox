@@ -10,6 +10,27 @@ test('renders, searches, collapses and focuses the example map', async ({ page }
   await expect(page.getByLabel('Gruppe Management Capabilities')).toBeVisible();
   await expect(page.getByLabel('Gruppe Enabling Capabilities')).toBeVisible();
   await expect(page.getByLabel('Gruppe Management Capabilities').locator('svg')).toHaveCount(0);
+  const managementGroup = page.getByLabel('Gruppe Management Capabilities');
+  const managementLabelRight = await managementGroup.evaluate(
+    (element) =>
+      element.querySelector('.capability-group__label')?.getBoundingClientRect().right ?? 0,
+  );
+  const managementLabelMetrics = await managementGroup.evaluate((element) => {
+    const label = element.querySelector('.capability-group__label');
+    const name = label?.querySelector('strong');
+    return {
+      width: label?.getBoundingClientRect().width ?? 0,
+      writingMode: name ? getComputedStyle(name).writingMode : '',
+      whiteSpace: name ? getComputedStyle(name).whiteSpace : '',
+    };
+  });
+  expect(managementLabelMetrics.width).toBeLessThan(60);
+  expect(managementLabelMetrics.writingMode).toBe('vertical-rl');
+  expect(managementLabelMetrics.whiteSpace).toBe('nowrap');
+  const firstManagementCapabilityLeft = await page
+    .getByRole('article', { name: 'Strategy', exact: true })
+    .evaluate((element) => element.getBoundingClientRect().left);
+  expect(firstManagementCapabilityLeft - managementLabelRight).toBeGreaterThan(2);
 
   const customerCard = page.getByRole('article', { name: 'Customer', exact: true });
   const customerHeaderBottom = await customerCard.evaluate(
@@ -46,18 +67,20 @@ test('renders, searches, collapses and focuses the example map', async ({ page }
   await page.getByRole('button', { name: 'Management Capabilities einklappen' }).click();
   await expect(page.getByRole('article', { name: 'Strategy', exact: true })).toHaveCount(0);
   const collapsedHorizontalGroup = page.getByLabel('Gruppe Management Capabilities');
-  await expect(collapsedHorizontalGroup.locator('strong')).toHaveCount(0);
+  await expect(collapsedHorizontalGroup.getByText('Management Capabilities')).toBeVisible();
   const collapsedHorizontalMetrics = await collapsedHorizontalGroup.evaluate((element) => ({
     height: element.getBoundingClientRect().height,
+    width: element.getBoundingClientRect().width,
   }));
   expect(collapsedHorizontalMetrics.height).toBeLessThan(30);
+  expect(collapsedHorizontalMetrics.width).toBeLessThan(220);
   await page.getByRole('button', { name: 'Management Capabilities ausklappen' }).click();
   await expect(page.getByRole('article', { name: 'Strategy', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Enabling Capabilities einklappen' }).click();
   await expect(page.getByRole('article', { name: 'Technology', exact: true })).toHaveCount(0);
   const collapsedVerticalGroup = page.getByLabel('Gruppe Enabling Capabilities');
-  await expect(collapsedVerticalGroup.locator('strong')).toHaveCount(0);
+  await expect(collapsedVerticalGroup.getByText('Enabling Capabilities')).toBeVisible();
   const collapsedVerticalMetrics = await collapsedVerticalGroup.evaluate((element) => ({
     width: element.getBoundingClientRect().width,
   }));

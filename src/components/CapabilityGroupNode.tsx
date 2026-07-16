@@ -6,6 +6,7 @@ export interface CapabilityGroupNodeData extends Record<string, unknown> {
   group: NormalizedCapabilityGroup;
   collapsed: boolean;
   autoCollapsed: boolean;
+  labelSize: number;
   onToggle: (id: string) => void;
 }
 
@@ -23,7 +24,12 @@ export const CapabilityGroupNode = memo(function CapabilityGroupNode({
       className={`capability-group ${vertical ? 'vertical' : 'horizontal'}${
         collapsed ? ' collapsed' : ''
       }${autoCollapsed ? ' auto-collapsed' : ''}`}
-      style={{ '--group-color': group.backgroundColor } as React.CSSProperties}
+      style={
+        {
+          '--group-color': group.backgroundColor,
+          '--group-label-size': `${data.labelSize}px`,
+        } as React.CSSProperties
+      }
       aria-label={`Gruppe ${group.name}`}
       title={collapsed ? group.name : undefined}
     >
@@ -37,7 +43,7 @@ export const CapabilityGroupNode = memo(function CapabilityGroupNode({
           data.onToggle(group.id);
         }}
       >
-        {!collapsed && <strong>{group.name}</strong>}
+        <strong>{group.name}</strong>
       </button>
     </section>
   );

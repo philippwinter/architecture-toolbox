@@ -24,6 +24,7 @@ export interface GroupLayoutNode {
   kind: 'group';
   item: VisibleCapabilityGroup;
   rect: LayoutRect;
+  labelSize: number;
 }
 
 export type RootLayoutNode = CapabilityLayoutNode | GroupLayoutNode;
@@ -47,7 +48,7 @@ type CapabilityTrack =
 
 type RootTrack =
   | { kind: 'vertical'; items: [VisibleRootItem]; weight: number; fixedSize?: number }
-  | { kind: 'horizontal'; items: VisibleRootItem[]; weight: number };
+  | { kind: 'horizontal'; items: VisibleRootItem[]; weight: number; fixedSize?: number };
 
 const DEFAULTS: Required<LayoutOptions> = {
   width: 1600,
@@ -61,6 +62,9 @@ const DEFAULTS: Required<LayoutOptions> = {
   groupLabelWidth: 118,
   collapsedGroupSize: 22,
 };
+
+const GROUP_LABEL_AVERAGE_CHARACTER_WIDTH = 6.4;
+const GROUP_LABEL_PADDING = 20;
 
 function directionOf(item: VisibleRootItem) {
   return item.kind === 'group'
@@ -106,7 +110,7 @@ export function groupIntoTracks(items: VisibleCapability[]): CapabilityTrack[] {
 
 function groupRootItemsIntoTracks(
   items: VisibleRootItem[],
-  collapsedGroupSize: number,
+  config: Required<LayoutOptions>,
 ): RootTrack[] {
   const tracks: RootTrack[] = [];
   let index = 0;
@@ -118,7 +122,7 @@ function groupRootItemsIntoTracks(
         kind: 'vertical',
         items: [item],
         weight: weightOf(item),
-        fixedSize: item.kind === 'group' && item.collapsed ? collapsedGroupSize : undefined,
+        fixedSize: item.kind === 'group' && item.collapsed ? config.collapsedGroupSize : undefined,
       });
       index += 1;
       continue;
@@ -133,6 +137,19 @@ function groupRootItemsIntoTracks(
       kind: 'horizontal',
       items: block,
       weight: trackWeightOf(block[0] as VisibleRootItem) ?? 1,
+      fixedSize: block.every((entry) => entry.kind === 'group' && entry.collapsed)
+        ? Math.max(
+            ...block.map((entry) =>
+              entry.kind === 'group'
+                ? Math.max(
+                    config.groupLabelWidth,
+                    GROUP_LABEL_PADDING +
+                      entry.group.name.length * GROUP_LABEL_AVERAGE_CHARACTER_WIDTH,
+                  )
+                : 0,
+            ),
+          )
+        : undefined,
     });
   }
   return tracks;
@@ -140,6 +157,28 @@ function groupRootItemsIntoTracks(
 
 function countVisibleDescendants(item: VisibleCapability): number {
   return item.children.reduce((count, child) => count + 1 + countVisibleDescendants(child), 0);
+}
+
+function groupLabelSize(
+  item: VisibleCapabilityGroup,
+  rect: LayoutRect,
+  config: Required<LayoutOptions>,
+): number {
+  if (item.collapsed) {
+    return item.group.layout.direction === 'vertical' ? rect.height : rect.width;
+  }
+
+  const averageCharacterWidth = GROUP_LABEL_AVERAGE_CHARACTER_WIDTH;
+  const lineHeight = 14;
+  const labelPadding = GROUP_LABEL_PADDING;
+  if (item.group.layout.direction === 'vertical') {
+    const usableWidth = Math.max(averageCharacterWidth, rect.width - labelPadding);
+    const charactersPerLine = Math.max(1, Math.floor(usableWidth / averageCharacterWidth));
+    const lines = Math.ceil(item.group.name.length / charactersPerLine);
+    return Math.max(config.groupHeaderHeight, labelPadding + lines * lineHeight);
+  }
+
+  return config.groupHeaderHeight;
 }
 
 function allocateSizes(
@@ -259,7 +298,7 @@ export function layoutRootItems(
   const config = { ...DEFAULTS, ...options };
   const result: RootLayoutNode[] = [];
   const bounds = { x: 0, y: 0, width: config.width, height: config.height };
-  const tracks = groupRootItemsIntoTracks(roots, config.collapsedGroupSize);
+  const tracks = groupRootItemsIntoTracks(roots, config);
   const trackSizes = allocateSizes(tracks, bounds.width, config.gap);
   let trackX = bounds.x;
 
@@ -271,20 +310,21 @@ export function layoutRootItems(
       return;
     }
 
-    result.push({ kind: 'group', item, rect });
+    const labelSize = groupLabelSize(item, rect, config);
+    result.push({ kind: 'group', item, rect, labelSize });
     if (item.collapsed) return;
     const vertical = item.group.layout.direction === 'vertical';
     const contentBounds: LayoutRect = vertical
       ? {
           x: config.padding,
-          y: config.groupHeaderHeight + config.padding,
+          y: labelSize + config.padding,
           width: rect.width - config.padding * 2,
-          height: rect.height - config.groupHeaderHeight - config.padding * 2,
+          height: rect.height - labelSize - config.padding * 2,
         }
       : {
-          x: config.groupLabelWidth,
+          x: labelSize + config.padding,
           y: config.padding,
-          width: rect.width - config.groupLabelWidth - config.padding,
+          width: rect.width - labelSize - config.padding * 2,
           height: rect.height - config.padding * 2,
         };
     const capabilityNodes: CapabilityLayoutNode[] = [];

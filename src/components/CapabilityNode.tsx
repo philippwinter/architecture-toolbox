@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Focus, Layers3 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Layers3 } from 'lucide-react';
 import { memo } from 'react';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { NormalizedCapability } from '../domain/types';
@@ -11,8 +11,10 @@ export interface CapabilityNodeData extends Record<string, unknown> {
   collapsed: boolean;
   compact: boolean;
   minimal: boolean;
+  nameLineCount: number;
   hiddenDescendantCount: number;
   hasChildren: boolean;
+  chevronContinues: boolean;
   onToggle: (id: string) => void;
   onFocus: (id: string) => void;
 }
@@ -40,6 +42,10 @@ export const CapabilityNode = memo(function CapabilityNode({
     collapsed,
   } = data;
   const foreground = textColor(capability.color);
+  const renderedShape =
+    capability.shape === 'chevron' && capability.layout.direction === 'vertical'
+      ? 'chevron'
+      : 'box';
   const stop = (event: React.MouseEvent) => event.stopPropagation();
 
   return (
@@ -48,56 +54,53 @@ export const CapabilityNode = memo(function CapabilityNode({
         data.contextOnly ? ' context-only' : ''
       }${data.searchMatch ? ' search-match' : ''}${compact ? ' compact' : ''}${
         minimal ? ' minimal' : ''
+      } shape-${renderedShape} direction-${capability.layout.direction}${
+        data.chevronContinues ? ' chevron-continues' : ''
       }`}
-      style={{ '--cap-color': capability.color, '--cap-text': foreground } as React.CSSProperties}
+      style={
+        {
+          '--cap-color': capability.color,
+          '--cap-text': foreground,
+        } as React.CSSProperties
+      }
       title={capability.name}
+      onDoubleClickCapture={(event) => {
+        event.stopPropagation();
+        data.onFocus(capability.id);
+      }}
     >
-      <header className="capability-node__header">
-        {!minimal && (
-          <CapabilityIcon
-            name={capability.icon}
-            className="capability-node__icon"
-            size={compact ? 14 : 17}
-          />
-        )}
-        <strong>{capability.name}</strong>
-        <span className="capability-node__actions">
+      <div className="capability-node__surface">
+        <header className="capability-node__header">
           {!minimal && (
-            <button
-              type="button"
-              title="Teilbaum fokussieren"
-              aria-label={`${capability.name} fokussieren`}
-              onClick={(event) => {
-                stop(event);
-                data.onFocus(capability.id);
-              }}
-            >
-              <Focus size={14} />
-            </button>
+            <CapabilityIcon
+              name={capability.icon}
+              className="capability-node__icon"
+              size={compact ? 14 : 17}
+            />
           )}
-          {hasChildren && (
-            <button
-              type="button"
-              title={collapsed ? 'Kinder einblenden' : 'Kinder ausblenden'}
-              aria-label={`${capability.name} ${collapsed ? 'ausklappen' : 'einklappen'}`}
-              onClick={(event) => {
-                stop(event);
-                data.onToggle(capability.id);
-              }}
-            >
-              {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
-            </button>
-          )}
-        </span>
-      </header>
-      {!compact && capability.children.length === 0 && capability.description && (
-        <p>{capability.description}</p>
-      )}
-      {hiddenDescendantCount > 0 && (
-        <span className="hidden-count">
-          <Layers3 size={13} /> +{hiddenDescendantCount}
-        </span>
-      )}
+          <strong style={{ WebkitLineClamp: data.nameLineCount }}>{capability.name}</strong>
+          <span className="capability-node__actions">
+            {hasChildren && (
+              <button
+                type="button"
+                title={collapsed ? 'Kinder einblenden' : 'Kinder ausblenden'}
+                aria-label={`${capability.name} ${collapsed ? 'ausklappen' : 'einklappen'}`}
+                onClick={(event) => {
+                  stop(event);
+                  data.onToggle(capability.id);
+                }}
+              >
+                {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+              </button>
+            )}
+          </span>
+        </header>
+        {hiddenDescendantCount > 0 && (
+          <span className="hidden-count">
+            <Layers3 size={13} /> +{hiddenDescendantCount}
+          </span>
+        )}
+      </div>
     </article>
   );
 });

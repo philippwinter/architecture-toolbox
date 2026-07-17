@@ -6,28 +6,31 @@ describe('parseCapabilityDocument', () => {
   it('parses and normalizes the start example', () => {
     const result = parseCapabilityDocument(SAMPLE_YAML);
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, JSON.stringify(result.diagnostics, null, 2)).toBe(true);
     if (!result.ok) return;
     expect(result.value.name).toBe('Enterprise Capability Map');
-    expect(result.value.capabilitiesById).toHaveLength(13);
-    expect(result.value.groupsById).toHaveLength(2);
+    expect(result.value.capabilitiesById).toHaveLength(500);
+    expect(result.value.groupsById).toHaveLength(14);
     expect(result.value.rootItems.map((item) => item.kind)).toEqual([
       'group',
-      'capability',
-      'capability',
+      'group',
+      'flush',
+      'group',
+      'group',
+      'flush',
       'group',
     ]);
     expect(result.value.capabilitiesById.get('customer-insights')).toMatchObject({
       color: '#F8DFC0',
-      icon: 'chart',
+      icon: 'Search',
       parentId: 'customer',
       path: ['customer', 'customer-insights'],
       depth: 1,
     });
-    expect(result.value.capabilitiesById.get('governance')).toMatchObject({
-      color: '#DCE8F5',
-      icon: 'shield',
-      layout: { direction: 'horizontal', weight: 1 },
+    expect(result.value.capabilitiesById.get('corporate-governance')).toMatchObject({
+      color: '#D7E9F7',
+      icon: 'Scale',
+      layout: { direction: 'horizontal' },
     });
   });
 
@@ -70,7 +73,110 @@ map:
 `);
 
     expect(result.ok).toBe(false);
-    expect(result.diagnostics[0]?.message).toContain('ersten Element');
+    expect(result.diagnostics[0]?.message).toContain('ersten fachlichen Element');
+  });
+
+  it('supports multiple mixed flushes and rejects empty layout segments', () => {
+    const valid = parseCapabilityDocument(`version: 1
+map:
+  id: flush-map
+  name: Flushes
+  capabilities:
+    - id: one
+      name: One
+    - type: flush
+      direction: horizontal
+    - id: two
+      name: Two
+    - type: flush
+      direction: vertical
+    - id: three
+      name: Three
+`);
+    expect(valid.ok).toBe(true);
+
+    const invalid = parseCapabilityDocument(`version: 1
+map:
+  id: flush-map
+  name: Flushes
+  capabilities:
+    - type: flush
+      direction: horizontal
+    - id: one
+      name: One
+`);
+    expect(invalid.ok).toBe(false);
+    expect(invalid.diagnostics[0]?.message).toContain('Anfang oder Ende');
+  });
+
+  it('validates layerWeight, removed weight and chevron leaves', () => {
+    const removedWeight = parseCapabilityDocument(`version: 1
+map:
+  id: old-layout
+  name: Old
+  capabilities:
+    - id: one
+      name: One
+      layout:
+        weight: 2
+`);
+    expect(removedWeight.ok).toBe(false);
+    expect(removedWeight.diagnostics[0]?.message).toContain('layerWeight');
+
+    const invalidChevron = parseCapabilityDocument(`version: 1
+map:
+  id: chevron-map
+  name: Chevron
+  capabilities:
+    - id: parent
+      name: Parent
+      visualization:
+        shape: chevron
+      children:
+        - id: child
+          name: Child
+`);
+    expect(invalidChevron.ok).toBe(false);
+    expect(invalidChevron.diagnostics[0]?.message).toContain('Blatt-Capabilities');
+
+    const invalidLayer = parseCapabilityDocument(`version: 1
+map:
+  id: layer-map
+  name: Layer
+  capabilities:
+    - id: one
+      name: One
+      layout:
+        direction: vertical
+        layerWeight: 2
+`);
+    expect(invalidLayer.ok).toBe(false);
+    expect(invalidLayer.diagnostics[0]?.message).toContain('direction: horizontal');
+  });
+
+  it('allows exactly two group levels', () => {
+    const invalid = parseCapabilityDocument(`version: 1
+map:
+  id: group-map
+  name: Groups
+  capabilities:
+    - type: group
+      id: level-one
+      name: One
+      capabilities:
+        - type: group
+          id: level-two
+          name: Two
+          capabilities:
+            - type: group
+              id: level-three
+              name: Three
+              capabilities:
+                - id: capability
+                  name: Capability
+`);
+    expect(invalid.ok).toBe(false);
+    expect(invalid.diagnostics.some((entry) => entry.message.includes('höchstens zwei'))).toBe(true);
   });
 
   it('accepts every installed Lucide icon and rejects unknown names', () => {

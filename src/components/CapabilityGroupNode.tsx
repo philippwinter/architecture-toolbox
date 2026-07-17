@@ -7,6 +7,7 @@ export interface CapabilityGroupNodeData extends Record<string, unknown> {
   collapsed: boolean;
   autoCollapsed: boolean;
   labelSize: number;
+  collapsedTrackFill: boolean;
   onToggle: (id: string) => void;
 }
 
@@ -23,7 +24,9 @@ export const CapabilityGroupNode = memo(function CapabilityGroupNode({
     <section
       className={`capability-group ${vertical ? 'vertical' : 'horizontal'}${
         collapsed ? ' collapsed' : ''
-      }${autoCollapsed ? ' auto-collapsed' : ''}`}
+      }${autoCollapsed ? ' auto-collapsed' : ''}${
+        data.collapsedTrackFill ? ' collapsed-track-fill' : ''
+      }`}
       style={
         {
           '--group-color': group.backgroundColor,

@@ -1,4 +1,4 @@
-import { ChevronRight, Focus, Layers3, UserRound, X } from 'lucide-react';
+import { ChevronRight, Layers3, UserRound, X } from 'lucide-react';
 import type { MetadataValue, NormalizedCapability } from '../domain/types';
 import { CapabilityIcon } from './CapabilityIcon';
 
@@ -6,7 +6,6 @@ interface DetailPanelProps {
   capability: NormalizedCapability;
   collapsed: boolean;
   onClose: () => void;
-  onFocus: (id: string) => void;
   onToggle: (id: string) => void;
 }
 
@@ -17,7 +16,7 @@ function renderMetadataValue(value: MetadataValue): string {
   return String(value);
 }
 
-export function DetailPanel({ capability, collapsed, onClose, onFocus, onToggle }: DetailPanelProps) {
+export function DetailPanel({ capability, collapsed, onClose, onToggle }: DetailPanelProps) {
   return (
     <aside className="detail-panel" aria-label={`Details zu ${capability.name}`}>
       <div className="detail-panel__top">
@@ -37,10 +36,7 @@ export function DetailPanel({ capability, collapsed, onClose, onFocus, onToggle 
       </div>
 
       <div className="detail-actions">
-        <button type="button" onClick={() => onFocus(capability.id)}>
-          <Focus size={15} /> Fokussieren
-        </button>
-        {capability.children.length > 0 && (
+        {capability.children.some((child) => child.kind === 'capability') && (
           <button type="button" onClick={() => onToggle(capability.id)}>
             <Layers3 size={15} /> {collapsed ? 'Ausklappen' : 'Einklappen'}
           </button>
@@ -101,7 +97,8 @@ export function DetailPanel({ capability, collapsed, onClose, onFocus, onToggle 
           ))}
         </div>
         <p className="hierarchy-count">
-          {capability.children.length} direkte Kinder · {capability.descendantCount} Nachfahren
+          {capability.children.filter((child) => child.kind === 'capability').length} direkte Kinder ·{' '}
+          {capability.descendantCount} Nachfahren
         </p>
       </section>
 
@@ -110,8 +107,10 @@ export function DetailPanel({ capability, collapsed, onClose, onFocus, onToggle 
         <dl className="metadata-list compact-list">
           <div><dt>Farbe</dt><dd><span className="color-dot" style={{ background: capability.color }} />{capability.color}</dd></div>
           <div><dt>Icon</dt><dd>{capability.icon ?? 'Standard'}</dd></div>
+          <div><dt>Form</dt><dd>{capability.shape}</dd></div>
           <div><dt>Richtung</dt><dd>{capability.layout.direction}</dd></div>
-          <div><dt>Gewicht</dt><dd>{capability.layout.weight}</dd></div>
+          <div><dt>Layer-Gewicht</dt><dd>{capability.layout.layerWeight ?? 'Automatisch'}</dd></div>
+          <div><dt>Track-Gewicht</dt><dd>{capability.layout.trackWeight ?? 'Automatisch'}</dd></div>
         </dl>
       </section>
     </aside>

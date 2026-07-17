@@ -4,13 +4,18 @@ import type {
   NormalizedCapabilityGroup,
   VisibleCapability,
   VisibleCapabilityGroup,
+  VisibleGroupItem,
+  VisibleRootItem,
 } from './types';
 import { groupIntoTracks, layoutCapabilityTree, layoutRootItems } from './layout';
+import { SAMPLE_YAML } from '../sample';
+import { parseCapabilityDocument } from './parser';
+import { computeVisibleTree } from './visibility';
 
 function item(
   id: string,
   direction: 'horizontal' | 'vertical',
-  weight = 1,
+  layerWeight?: number,
   trackWeight?: number,
 ): VisibleCapability {
   const capability: NormalizedCapability = {
@@ -21,7 +26,8 @@ function item(
     tags: [],
     metadata: {},
     color: '#ffffff',
-    layout: { direction, weight, trackWeight },
+    shape: 'box',
+    layout: { direction, layerWeight, trackWeight },
     children: [],
     path: [id],
     pathNames: [id],
@@ -34,18 +40,24 @@ function item(
 function group(
   id: string,
   direction: 'horizontal' | 'vertical',
-  capabilities: VisibleCapability[],
+  capabilities: VisibleGroupItem[],
   collapsed = false,
   trackWeight?: number,
+  groupLevel: 1 | 2 = 1,
 ): VisibleCapabilityGroup {
   const normalized: NormalizedCapabilityGroup = {
     kind: 'group',
     id,
     name: id,
     backgroundColor: '#eeeeee',
-    layout: { direction, weight: 1, trackWeight },
-    capabilities: capabilities.map((entry) => entry.capability),
-    capabilityCount: capabilities.length,
+    layout: { direction, trackWeight },
+    capabilities: capabilities.map((entry) => {
+      if (entry.kind === 'group') return entry.group;
+      if (entry.kind === 'flush') return entry;
+      return entry.capability;
+    }),
+    capabilityCount: capabilities.filter((entry) => entry.kind === 'capability').length,
+    groupLevel,
   };
   return {
     kind: 'group',
@@ -68,43 +80,31 @@ describe('capability layout', () => {
       item('cap-7', 'horizontal'),
     ];
 
-    expect(groupIntoTracks(items).map((track) => track.items.map((entry) => entry.capability.id))).toEqual([
+    expect(
+      groupIntoTracks(items).map((track) =>
+        track.items.flatMap((entry) =>
+          entry.kind === 'capability' ? [entry.capability.id] : [],
+        ),
+      ),
+    ).toEqual([
       ['cap-1', 'cap-2', 'cap-3'],
       ['cap-4'],
       ['cap-5'],
       ['cap-6', 'cap-7'],
     ]);
-
-    const layout = layoutCapabilityTree(items, {
-      width: 400,
-      height: 300,
-      gap: 0,
-      padding: 0,
-      headerHeight: 0,
-      minChildHeight: 0,
-      minChildWidth: 0,
-    });
-    const rect = (id: string) => layout.find((node) => node.item.capability.id === id)?.rect;
-
-    expect(rect('cap-1')).toEqual({ x: 0, y: 0, width: 100, height: 100 });
-    expect(rect('cap-3')).toEqual({ x: 0, y: 200, width: 100, height: 100 });
-    expect(rect('cap-4')).toEqual({ x: 100, y: 0, width: 100, height: 300 });
-    expect(rect('cap-5')).toEqual({ x: 200, y: 0, width: 100, height: 300 });
-    expect(rect('cap-7')).toEqual({ x: 300, y: 150, width: 100, height: 150 });
   });
 
-  it('uses weights for vertical tracks and horizontal stack heights', () => {
+  it('uses explicit trackWeight and layerWeight overrides', () => {
     const items = [
       item('horizontal-a', 'horizontal', 1, 2),
       item('horizontal-b', 'horizontal', 3),
-      item('vertical', 'vertical', 1),
+      item('vertical', 'vertical', undefined, 1),
     ];
     const layout = layoutCapabilityTree(items, {
       width: 300,
       height: 400,
       gap: 0,
-      padding: 0,
-      headerHeight: 0,
+      leafHeight: 1000,
     });
     const byId = new Map(layout.map((node) => [node.item.capability.id, node.rect]));
 
@@ -113,17 +113,39 @@ describe('capability layout', () => {
     expect(byId.get('vertical')).toEqual({ x: 200, y: 0, width: 100, height: 400 });
   });
 
-  it('summarizes descendants when the child area is too small', () => {
-    const child = item('child', 'vertical');
-    const parent = item('parent', 'vertical');
-    parent.capability.children = [child.capability];
-    parent.capability.descendantCount = 1;
-    parent.children = [child];
+  it('starts a new track and a new band at explicit flushes', () => {
+    const roots: VisibleRootItem[] = [
+      item('one', 'horizontal'),
+      { kind: 'flush', direction: 'horizontal' },
+      item('two', 'horizontal'),
+      { kind: 'flush', direction: 'vertical' },
+      item('three', 'vertical'),
+    ];
+    const layout = layoutRootItems(roots, { width: 400, height: 400, gap: 0, leafHeight: 1000 });
+    const byId = new Map(
+      layout.flatMap((node) =>
+        node.kind === 'capability' ? [[node.item.capability.id, node.rect] as const] : [],
+      ),
+    );
 
-    const layout = layoutCapabilityTree([parent], { width: 100, height: 60 });
+    expect(byId.get('one')?.x).toBe(0);
+    expect(byId.get('two')?.x).toBeGreaterThan(0);
+    expect(byId.get('three')?.y).toBeGreaterThan(0);
+  });
 
-    expect(layout).toHaveLength(1);
-    expect(layout[0]).toMatchObject({ renderedChildCount: 0, hiddenDescendantCount: 1 });
+  it('tiles leaf slots completely and gives wider tracks to larger demand', () => {
+    const short = item('short', 'vertical');
+    const long = item('a-very-long-capability-name-that-needs-more-space', 'vertical');
+    long.capability.name = 'A very long capability name that needs substantially more space';
+    const layout = layoutCapabilityTree([short, long], { width: 600, height: 300, gap: 0 });
+    const byId = new Map(layout.map((node) => [node.item.capability.id, node.rect]));
+
+    expect(byId.get('short')?.height).toBe(300);
+    expect(byId.get(long.capability.id)?.height).toBe(300);
+    expect(
+      (byId.get('short')?.width ?? 0) + (byId.get(long.capability.id)?.width ?? 0),
+    ).toBeCloseTo(600);
+    expect(byId.get(long.capability.id)?.width).toBeGreaterThan(byId.get('short')?.width ?? 0);
   });
 
   it('applies equal top and bottom padding around nested capabilities', () => {
@@ -149,30 +171,44 @@ describe('capability layout', () => {
     });
   });
 
-  it('reserves a top label for vertical groups and a left label for horizontal groups', () => {
-    const vertical = layoutRootItems([group('vertical-group', 'vertical', [item('child', 'vertical')])], {
-      width: 400,
+  it('derives automatic demand only from currently visible children', () => {
+    const deepChild = item('deep-child-with-a-long-name', 'vertical');
+    deepChild.capability.name = 'A deeply nested visible capability with substantial demand';
+    const parent = item('parent', 'vertical');
+    parent.capability.children = [deepChild.capability];
+    parent.children = [deepChild];
+    const sibling = item('sibling', 'vertical');
+
+    const expanded = layoutCapabilityTree([parent, sibling], {
+      width: 800,
       height: 300,
       gap: 0,
-      padding: 10,
-      groupHeaderHeight: 40,
     });
-    expect(vertical[0]).toMatchObject({ kind: 'group', rect: { width: 400, height: 300 } });
-    expect(vertical[1]).toMatchObject({
-      kind: 'capability',
-      parentId: 'vertical-group',
-      rect: { x: 10, y: 50, width: 380, height: 240 },
+    const collapsed = layoutCapabilityTree([{ ...parent, children: [] }, sibling], {
+      width: 800,
+      height: 300,
+      gap: 0,
     });
+    const expandedParent = expanded.find((node) => node.item.capability.id === 'parent');
+    const collapsedParent = collapsed.find((node) => node.item.capability.id === 'parent');
 
-    const horizontal = layoutRootItems(
-      [group('horizontal-group', 'horizontal', [item('child', 'vertical')])],
-      { width: 400, height: 300, gap: 0, padding: 10, groupHeaderHeight: 40 },
+    expect(expandedParent?.rect.width).toBeGreaterThan(collapsedParent?.rect.width ?? 0);
+    expect(collapsedParent?.rect.width).toBeCloseTo(400);
+  });
+
+  it('lays out nested groups with the correct React Flow parent', () => {
+    const nested = group('nested', 'vertical', [item('child', 'vertical')], false, undefined, 2);
+    const root = group('root', 'vertical', [nested]);
+    const layout = layoutRootItems([root], { width: 500, height: 400, gap: 0 });
+    const nestedNode = layout.find(
+      (node) => node.kind === 'group' && node.item.group.id === 'nested',
     );
-    expect(horizontal[1]).toMatchObject({
-      kind: 'capability',
-      parentId: 'horizontal-group',
-      rect: { x: 50, y: 10, width: 340, height: 280 },
-    });
+    const childNode = layout.find(
+      (node) => node.kind === 'capability' && node.item.capability.id === 'child',
+    );
+
+    expect(nestedNode).toMatchObject({ parentId: 'root' });
+    expect(childNode).toMatchObject({ parentId: 'nested' });
   });
 
   it('keeps collapsed groups as thin structural placeholders', () => {
@@ -194,33 +230,58 @@ describe('capability layout', () => {
       ]),
     );
 
-    expect(byId.get('horizontal-group')?.height).toBe(20);
+    expect(byId.get('horizontal-group')?.height).toBe(300);
+    expect(byId.get('horizontal-group')?.width).toBe(20);
     expect(byId.get('vertical-group')?.width).toBe(20);
     expect(byId.has('hidden-a')).toBe(false);
     expect(byId.has('hidden-b')).toBe(false);
   });
 
-  it('releases the trackWeight space of a fully collapsed horizontal group track', () => {
+  it('lets an all-collapsed horizontal group track tile the full height', () => {
     const roots = [
-      group('h', 'horizontal', [item('hidden', 'vertical')], true, 4),
-      item('visible-a', 'vertical'),
-      item('visible-b', 'vertical'),
+      group('collapsed-one', 'horizontal', [item('hidden-one', 'vertical')], true),
+      group('collapsed-two', 'horizontal', [item('hidden-two', 'vertical')], true),
+      item('visible-track', 'vertical'),
     ];
     const layout = layoutRootItems(roots, {
-      width: 600,
+      width: 300,
       height: 300,
       gap: 0,
-      groupLabelWidth: 80,
+      collapsedGroupSize: 20,
     });
-    const byId = new Map(
-      layout.map((node) => [
-        node.kind === 'group' ? node.item.group.id : node.item.capability.id,
-        node.rect,
-      ]),
+    const first = layout.find(
+      (node) => node.kind === 'group' && node.item.group.id === 'collapsed-one',
+    );
+    const second = layout.find(
+      (node) => node.kind === 'group' && node.item.group.id === 'collapsed-two',
     );
 
-    expect(byId.get('h')).toEqual({ x: 0, y: 0, width: 80, height: 22 });
-    expect(byId.get('visible-a')).toEqual({ x: 80, y: 0, width: 260, height: 300 });
-    expect(byId.get('visible-b')).toEqual({ x: 340, y: 0, width: 260, height: 300 });
+    expect(first).toMatchObject({
+      collapsedTrackFill: true,
+      rect: { x: 0, y: 0, width: 20, height: 150 },
+    });
+    expect(second).toMatchObject({
+      collapsedTrackFill: true,
+      rect: { x: 0, y: 150, width: 20, height: 150 },
+    });
+  });
+
+  it('lays out all 500 reference capabilities within a bounded canvas', () => {
+    const parsed = parseCapabilityDocument(SAMPLE_YAML);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const visible = computeVisibleTree(parsed.value, {
+      search: '',
+      filters: {},
+      collapsedIds: new Set(),
+    });
+    const layout = layoutRootItems(visible);
+    const rootNodes = layout.filter((node) => node.parentId === undefined);
+    const width = Math.max(...rootNodes.map((node) => node.rect.x + node.rect.width));
+    const height = Math.max(...rootNodes.map((node) => node.rect.y + node.rect.height));
+
+    expect(layout.filter((node) => node.kind === 'capability')).toHaveLength(500);
+    expect(width).toBeLessThan(30_000);
+    expect(height).toBeLessThan(10_000);
   });
 });

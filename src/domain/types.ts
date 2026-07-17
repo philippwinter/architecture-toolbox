@@ -1,4 +1,5 @@
 export type LayoutDirection = 'horizontal' | 'vertical';
+export type CapabilityShape = 'box' | 'chevron';
 
 export type MetadataValue =
   | boolean
@@ -7,6 +8,11 @@ export type MetadataValue =
   | null
   | MetadataValue[]
   | { [key: string]: MetadataValue };
+
+export interface FlushInput {
+  type: 'flush';
+  direction: LayoutDirection;
+}
 
 export interface CapabilityInput {
   id: string;
@@ -18,15 +24,18 @@ export interface CapabilityInput {
   visualization?: {
     color?: string;
     icon?: string;
+    shape?: CapabilityShape;
   };
   layout?: {
     direction?: LayoutDirection;
-    weight?: number;
+    layerWeight?: number;
     trackWeight?: number;
   };
   metadata?: Record<string, MetadataValue>;
-  children?: CapabilityInput[];
+  children?: CapabilityChildInput[];
 }
+
+export type CapabilityChildInput = CapabilityInput | FlushInput;
 
 export interface CapabilityGroupInput {
   type: 'group';
@@ -37,13 +46,14 @@ export interface CapabilityGroupInput {
   };
   layout?: {
     direction?: LayoutDirection;
-    weight?: number;
+    layerWeight?: number;
     trackWeight?: number;
   };
-  capabilities: CapabilityInput[];
+  capabilities: GroupItemInput[];
 }
 
-export type RootItemInput = CapabilityInput | CapabilityGroupInput;
+export type GroupItemInput = CapabilityInput | CapabilityGroupInput | FlushInput;
+export type RootItemInput = GroupItemInput;
 
 export interface CapabilityMapInput {
   version: 1;
@@ -56,6 +66,11 @@ export interface CapabilityMapInput {
     };
     capabilities: RootItemInput[];
   };
+}
+
+export interface NormalizedFlush {
+  kind: 'flush';
+  direction: LayoutDirection;
 }
 
 export interface NormalizedCapability {
@@ -71,18 +86,21 @@ export interface NormalizedCapability {
   color: string;
   explicitIcon?: string;
   icon?: string;
+  shape: CapabilityShape;
   layout: {
     direction: LayoutDirection;
-    weight: number;
+    layerWeight?: number;
     trackWeight?: number;
   };
-  children: NormalizedCapability[];
+  children: NormalizedCapabilityChild[];
   parentId?: string;
   path: string[];
   pathNames: string[];
   depth: number;
   descendantCount: number;
 }
+
+export type NormalizedCapabilityChild = NormalizedCapability | NormalizedFlush;
 
 export interface NormalizedCapabilityGroup {
   kind: 'group';
@@ -91,14 +109,20 @@ export interface NormalizedCapabilityGroup {
   backgroundColor: string;
   layout: {
     direction: LayoutDirection;
-    weight: number;
+    layerWeight?: number;
     trackWeight?: number;
   };
-  capabilities: NormalizedCapability[];
+  capabilities: NormalizedGroupItem[];
   capabilityCount: number;
+  groupLevel: 1 | 2;
+  parentGroupId?: string;
 }
 
-export type NormalizedRootItem = NormalizedCapability | NormalizedCapabilityGroup;
+export type NormalizedGroupItem =
+  | NormalizedCapability
+  | NormalizedCapabilityGroup
+  | NormalizedFlush;
+export type NormalizedRootItem = NormalizedGroupItem;
 
 export interface NormalizedMap {
   id: string;
@@ -125,23 +149,31 @@ export type DocumentResult =
   | { ok: true; value: NormalizedMap; diagnostics: Diagnostic[] }
   | { ok: false; diagnostics: Diagnostic[] };
 
+export interface VisibleFlush {
+  kind: 'flush';
+  direction: LayoutDirection;
+}
+
 export interface VisibleCapability {
   kind: 'capability';
   capability: NormalizedCapability;
-  children: VisibleCapability[];
+  children: VisibleCapabilityChild[];
   contextOnly: boolean;
   searchMatch: boolean;
 }
 
+export type VisibleCapabilityChild = VisibleCapability | VisibleFlush;
+
 export interface VisibleCapabilityGroup {
   kind: 'group';
   group: NormalizedCapabilityGroup;
-  capabilities: VisibleCapability[];
+  capabilities: VisibleGroupItem[];
   collapsed: boolean;
   autoCollapsed: boolean;
 }
 
-export type VisibleRootItem = VisibleCapability | VisibleCapabilityGroup;
+export type VisibleGroupItem = VisibleCapability | VisibleCapabilityGroup | VisibleFlush;
+export type VisibleRootItem = VisibleGroupItem;
 
 export type FilterSelection = Record<string, string[]>;
 

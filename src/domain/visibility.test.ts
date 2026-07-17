@@ -13,6 +13,7 @@ function findInTree(
   id: string,
 ): VisibleCapability | undefined {
   for (const root of roots) {
+    if (root.kind === 'flush') continue;
     if (root.kind === 'group') {
       const groupedCapability = findInTree(root.capabilities, id);
       if (groupedCapability) return groupedCapability;
@@ -39,13 +40,13 @@ describe('visibility', () => {
 
   it('temporarily opens collapsed ancestors for an actual search hit', () => {
     const roots = computeVisibleTree(map, {
-      search: 'Production',
+      search: 'Konkrete Ausprägung innerhalb von Customer.',
       filters: {},
-      collapsedIds: new Set(['operations']),
+      collapsedIds: new Set(['customer']),
     });
 
-    expect(findInTree(roots, 'production')?.searchMatch).toBe(true);
-    expect(findInTree(roots, 'operations')?.children).toHaveLength(3);
+    expect(findInTree(roots, 'customer-insights')?.searchMatch).toBe(true);
+    expect(findInTree(roots, 'customer')?.children.length).toBeGreaterThan(0);
   });
 
   it('keeps context ancestors and distinguishes them from direct filter matches', () => {
@@ -55,23 +56,18 @@ describe('visibility', () => {
       collapsedIds: new Set(),
     });
 
-    expect(
-      roots.map((root) => (root.kind === 'group' ? root.group.id : root.capability.id)),
-    ).toEqual(['management-group', 'customer', 'enabler-group']);
-    const groups = roots.filter((root) => root.kind === 'group');
-    expect(groups.every((group) => group.collapsed && group.autoCollapsed)).toBe(true);
-    const customer = roots.find(
-      (root) => root.kind === 'capability' && root.capability.id === 'customer',
-    );
-    expect(customer?.kind === 'capability' ? customer.contextOnly : undefined).toBe(false);
+    expect(findInTree(roots, 'customer')).toBeDefined();
+    expect(findInTree(roots, 'customer')?.contextOnly).toBe(true);
+    expect(findInTree(roots, 'value-proposition')?.contextOnly).toBe(false);
   });
 
   it('derives filter options from scalar values and scalar lists', () => {
     const options = buildFilterOptions(map);
 
-    expect(options.find((option) => option.field === 'tags')?.values).toContain('core');
+    expect(options.find((option) => option.field === 'tags')?.values).toContain('reference');
     expect(options.find((option) => option.field === 'metadata.criticality')?.values).toEqual([
       'high',
+      'medium',
     ]);
     expect(options.find((option) => option.field === 'owner')?.values).toContain('COO');
   });
@@ -81,10 +77,10 @@ describe('visibility', () => {
       search: '',
       filters: {},
       collapsedIds: new Set(),
-      collapsedGroupIds: new Set(['management-group']),
+      collapsedGroupIds: new Set(['strategy-governance-group']),
     });
     const collapsedGroup = collapsed.find(
-      (root) => root.kind === 'group' && root.group.id === 'management-group',
+      (root) => root.kind === 'group' && root.group.id === 'strategy-governance-group',
     );
     expect(collapsedGroup?.kind === 'group' ? collapsedGroup.collapsed : false).toBe(true);
     expect(collapsedGroup?.kind === 'group' ? collapsedGroup.capabilities : []).toEqual([]);
@@ -93,10 +89,10 @@ describe('visibility', () => {
       search: 'Strategy',
       filters: {},
       collapsedIds: new Set(),
-      collapsedGroupIds: new Set(['management-group']),
+      collapsedGroupIds: new Set(['strategy-governance-group']),
     });
     const openedGroup = searched.find(
-      (root) => root.kind === 'group' && root.group.id === 'management-group',
+      (root) => root.kind === 'group' && root.group.id === 'strategy-governance-group',
     );
     expect(openedGroup?.kind === 'group' ? openedGroup.collapsed : true).toBe(false);
     expect(findInTree(searched, 'strategy')?.searchMatch).toBe(true);

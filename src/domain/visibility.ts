@@ -3,9 +3,12 @@ import type {
   FilterSelection,
   MetadataValue,
   NormalizedCapability,
+  NormalizedGroupItem,
   NormalizedMap,
   VisibleCapability,
+  VisibleCapabilityChild,
   VisibleCapabilityGroup,
+  VisibleGroupItem,
   VisibleRootItem,
 } from './types';
 
@@ -35,7 +38,12 @@ function fieldValues(capability: NormalizedCapability, field: string): string[] 
 }
 
 function allCapabilities(roots: NormalizedCapability[]): NormalizedCapability[] {
-  return roots.flatMap((capability) => [capability, ...allCapabilities(capability.children)]);
+  return roots.flatMap((capability) => [
+    capability,
+    ...allCapabilities(
+      capability.children.filter((child): child is NormalizedCapability => child.kind === 'capability'),
+    ),
+  ]);
 }
 
 export function buildFilterOptions(map: NormalizedMap): FilterOption[] {
@@ -102,6 +110,14 @@ interface VisibilityArguments {
   focusId?: string;
 }
 
+function cleanFlushes<T extends { kind: string }>(items: T[]): T[] {
+  return items.filter((item, index) => {
+    if (item.kind !== 'flush') return true;
+    if (index === 0 || index === items.length - 1) return false;
+    return items[index - 1]?.kind !== 'flush' && items[index + 1]?.kind !== 'flush';
+  });
+}
+
 export function computeVisibleTree(
   map: NormalizedMap,
   { search, filters, collapsedIds, collapsedGroupIds = new Set(), focusId }: VisibilityArguments,
@@ -109,22 +125,32 @@ export function computeVisibleTree(
   const filterActive = Object.values(filters).some((values) => values.length > 0);
   const normalizedSearch = search.trim().toLocaleLowerCase('de');
   const containsSearchMatch = (item: VisibleCapability): boolean =>
-    item.searchMatch || item.children.some(containsSearchMatch);
+    item.searchMatch ||
+    item.children.some(
+      (child) => child.kind === 'capability' && containsSearchMatch(child),
+    );
 
-  const visit = (capability: NormalizedCapability): VisibleCapability | undefined => {
+  const visitCapability = (capability: NormalizedCapability): VisibleCapability | undefined => {
     const directFilterMatch = !filterActive || matchesFilters(capability, filters);
     const directSearchMatch =
       normalizedSearch.length > 0 && searchText(capability).includes(normalizedSearch);
-    const descendantResults = capability.children
-      .map(visit)
-      .filter((child): child is VisibleCapability => child !== undefined);
-    const hasRequiredDescendant = descendantResults.length > 0;
+    const descendantResults = cleanFlushes(
+      capability.children.flatMap<VisibleCapabilityChild>((child) => {
+        if (child.kind === 'flush') return [{ kind: 'flush', direction: child.direction }];
+        const visible = visitCapability(child);
+        return visible ? [visible] : [];
+      }),
+    );
+    const visibleDescendants = descendantResults.filter(
+      (child): child is VisibleCapability => child.kind === 'capability',
+    );
+    const hasRequiredDescendant = visibleDescendants.length > 0;
 
     if (filterActive && !directFilterMatch && !hasRequiredDescendant) return undefined;
 
     const forceOpen =
       (filterActive && hasRequiredDescendant) ||
-      (normalizedSearch.length > 0 && descendantResults.some(containsSearchMatch));
+      (normalizedSearch.length > 0 && visibleDescendants.some(containsSearchMatch));
     const children = collapsedIds.has(capability.id) && !forceOpen ? [] : descendantResults;
 
     return {
@@ -136,38 +162,52 @@ export function computeVisibleTree(
     };
   };
 
-  if (focusId) {
-    const focused = map.capabilitiesById.get(focusId);
-    const visibleFocused = focused ? visit(focused) : undefined;
-    return visibleFocused ? [visibleFocused] : [];
-  }
+  const groupContainsRequiredMatch = (items: VisibleGroupItem[]): boolean =>
+    items.some((item) => {
+      if (item.kind === 'flush') return false;
+      if (item.kind === 'group') return groupContainsRequiredMatch(item.capabilities);
+      return filterActive || (normalizedSearch.length > 0 && containsSearchMatch(item));
+    });
 
-  const roots: VisibleRootItem[] = [];
-  map.rootItems.forEach((item) => {
-    if (item.kind === 'capability') {
-      const visibleCapability = visit(item);
-      if (visibleCapability) roots.push(visibleCapability);
-      return;
-    }
-
-    const visibleCapabilities = item.capabilities
-      .map(visit)
-      .filter((capability): capability is VisibleCapability => capability !== undefined);
-    const autoCollapsed = filterActive && visibleCapabilities.length === 0;
-    const containsRequiredMatch =
-      visibleCapabilities.length > 0 &&
-      (filterActive ||
-        (normalizedSearch.length > 0 && visibleCapabilities.some(containsSearchMatch)));
-    const collapsed =
-      (collapsedGroupIds.has(item.id) || autoCollapsed) && !containsRequiredMatch;
-    const group: VisibleCapabilityGroup = {
+  const visitGroup = (
+    group: Extract<NormalizedGroupItem, { kind: 'group' }>,
+  ): VisibleCapabilityGroup => {
+    const visibleItems = cleanFlushes(
+      group.capabilities.flatMap<VisibleGroupItem>((item) => {
+        if (item.kind === 'flush') return [{ kind: 'flush', direction: item.direction }];
+        if (item.kind === 'group') return [visitGroup(item)];
+        const visible = visitCapability(item);
+        return visible ? [visible] : [];
+      }),
+    );
+    const hasVisibleCapability = visibleItems.some((item) => {
+      if (item.kind === 'capability') return true;
+      return item.kind === 'group' && item.capabilities.some((nested) => nested.kind !== 'flush');
+    });
+    const autoCollapsed = filterActive && !hasVisibleCapability;
+    const containsRequiredMatch = groupContainsRequiredMatch(visibleItems);
+    const collapsed = (collapsedGroupIds.has(group.id) || autoCollapsed) && !containsRequiredMatch;
+    return {
       kind: 'group',
-      group: item,
-      capabilities: collapsed ? [] : visibleCapabilities,
+      group,
+      capabilities: collapsed ? [] : visibleItems,
       collapsed,
       autoCollapsed,
     };
-    roots.push(group);
-  });
-  return roots;
+  };
+
+  if (focusId) {
+    const focused = map.capabilitiesById.get(focusId);
+    const visibleFocused = focused ? visitCapability(focused) : undefined;
+    return visibleFocused ? [visibleFocused] : [];
+  }
+
+  return cleanFlushes(
+    map.rootItems.flatMap<VisibleRootItem>((item) => {
+      if (item.kind === 'flush') return [{ kind: 'flush', direction: item.direction }];
+      if (item.kind === 'group') return [visitGroup(item)];
+      const visible = visitCapability(item);
+      return visible ? [visible] : [];
+    }),
+  );
 }

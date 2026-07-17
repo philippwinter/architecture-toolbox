@@ -26,7 +26,7 @@ Das MVP muss:
 10. eine getrennte Rendering-Schicht besitzen, die später als wiederverwendbare TypeScript-Bibliothek extrahiert oder veröffentlicht werden kann.
 11. TypeScript, Linting, automatisierte Tests und Hot Reloading unterstützen.
 12. Capabilities optional in rein visuellen, einklappbaren Gruppen auf zwei Gruppenebenen strukturieren können.
-13. Blatt-Capabilities unabhängig vom verfügbaren Containerplatz stets kompakt darstellen.
+13. Blatt-Capabilities mit kompakter Inhaltsdarstellung rendern, ihren zugewiesenen Layout-Slot jedoch vollständig ausfüllen lassen.
 14. Beschreibungen ausschließlich im Detailpanel und nicht innerhalb der Capability Map anzeigen.
 15. Capabilities wahlweise als rechteckige Box oder als Chevron einer Wertstromdarstellung rendern.
 16. fehlende `trackWeight`- und `layerWeight`-Werte anhand des rekursiv berechneten Platzbedarfs automatisch bestimmen.
@@ -73,7 +73,7 @@ Die Standardansicht besteht aus:
 - einer zentralen Map-Fläche;
 - einem bei Auswahl eingeblendeten Detailpanel rechts neben der Map.
 
-Das Detailpanel darf die Map-Fläche verkleinern, muss aber schließbar sein. Die Map passt ihren Viewport nach relevanten Layoutänderungen kontrolliert an; reine Detailauswahl darf Zoom und Position nicht verändern.
+Das Detailpanel darf die Map-Fläche verkleinern, muss aber schließbar sein. Reine Detailauswahl, Suche, Filter sowie Ein- und Ausklappen dürfen Zoom und Position nicht automatisch zurücksetzen. Ein vollständiges `fitView` erfolgt nur beim initialen Laden, nach „Auf Beispiel zurücksetzen“, auf die explizite Aktion „Ansicht einpassen“ und beim Eintritt in einen Fokusmodus.
 
 ### 5.2 Tablet
 
@@ -86,6 +86,7 @@ Die Map bietet:
 - Zoom per Mausrad beziehungsweise Trackpad;
 - Verschieben des Viewports;
 - Schaltflächen für Vergrößern, Verkleinern und „Ansicht einpassen“;
+- eine kompakte Auswahl der Ansichtstiefe mit „Ebene 1“, „Ebene 2“, „Ebene 3“ und „Vollständig“;
 - Auswahl einer Capability per einfachem Klick;
 - Ein- und Ausklappen einer Capability mit Kindern;
 - Fokus auf eine Capability als temporäre Wurzel per Doppelklick auf ihre Box beziehungsweise ihren Chevron;
@@ -191,8 +192,8 @@ map:
 | `visualization.icon` | String | nein | Offizieller Name eines Icons aus dem installierten Lucide-Katalog |
 | `visualization.shape` | `box` oder `chevron` | nein | Standard: `box`; `chevron` ist nur für Blatt-Capabilities zulässig |
 | `layout.direction` | `vertical` oder `horizontal` | nein | Standard: `vertical` |
-| `layout.layerWeight` | positive Zahl | nein | Optionaler expliziter Höhenfaktor eines horizontalen Layers; ohne Wert erfolgt eine automatische Bedarfsberechnung |
-| `layout.trackWeight` | positive Zahl | nein | Optionaler expliziter Track-Faktor; ohne Wert erfolgt eine automatische Bedarfsberechnung |
+| `layout.layerWeight` | positive Zahl | nein | Optionaler expliziter Höhenfaktor eines horizontalen Layers; ohne Wert erfolgt eine automatische Bedarfsberechnung ausschließlich aus aktuell sichtbaren Elementen |
+| `layout.trackWeight` | positive Zahl | nein | Optionaler expliziter Track-Faktor; ohne Wert erfolgt eine automatische Bedarfsberechnung ausschließlich aus aktuell sichtbaren Elementen |
 | `metadata` | Objekt | nein | Frei erweiterbare Metadaten |
 | `children` | Capability-/Flush-Liste | nein | Rekursive, geordnete Unterfähigkeiten mit optionalen Layout-Flushes; Gruppen sind hier nicht zulässig |
 
@@ -209,8 +210,8 @@ Gruppen werden durch `type: group` von normalen Capabilities unterschieden. Eine
 | `name` | nicht leerer String | ja | Stets vollständig darzustellender Gruppenname |
 | `visualization.backgroundColor` | RGB-Hex-String `#RRGGBB` | nein | Dezente Containerfarbe; eingebaute Standardfarbe bei fehlender Angabe |
 | `layout.direction` | `vertical` oder `horizontal` | nein | Standard: `vertical`; Anordnung im direkten Elterncontainer und Position des Gruppennamens |
-| `layout.layerWeight` | positive Zahl | nein | Optionaler expliziter Höhenfaktor eines horizontalen Layers; ohne Wert erfolgt eine automatische Bedarfsberechnung |
-| `layout.trackWeight` | positive Zahl | nein | Optionaler expliziter Track-Faktor; ohne Wert erfolgt eine automatische Bedarfsberechnung |
+| `layout.layerWeight` | positive Zahl | nein | Optionaler expliziter Höhenfaktor eines horizontalen Layers; ohne Wert erfolgt eine automatische Bedarfsberechnung ausschließlich aus aktuell sichtbaren Elementen |
+| `layout.trackWeight` | positive Zahl | nein | Optionaler expliziter Track-Faktor; ohne Wert erfolgt eine automatische Bedarfsberechnung ausschließlich aus aktuell sichtbaren Elementen |
 | `capabilities` | Element-Liste | ja | Mindestens eine Capability; auf Gruppenebene 1 zusätzlich Gruppenebene 2 sowie auf beiden Ebenen Flushes zulässig |
 
 ```yaml
@@ -278,15 +279,17 @@ Die Bezeichnung `horizontal` beschreibt weiterhin, dass ein Element als horizont
 Für jede Elementliste wird rekursiv folgender Algorithmus angewendet:
 
 1. Behalte die YAML-Reihenfolge unverändert bei.
-2. Berechne zunächst für jedes sichtbare Element seinen bevorzugten Platzbedarf rekursiv von den Blättern zur Wurzel.
+2. Berechne zunächst für jedes aktuell sichtbare Element seinen bevorzugten Platzbedarf rekursiv von den Blättern zur Wurzel. Kinder eingeklappter Capabilities beziehungsweise Inhalte eingeklappter Gruppen sowie durch Fokus oder Filter ausgeblendete Elemente fließen weder direkt noch indirekt in diese Berechnung ein.
 3. Teile die Elementliste an jedem `vertical`-Flush in Bänder. Die Höhe eines Bands leitet sich aus dem größten vertikalen Platzbedarf seiner Tracks ab; mehrere Bänder teilen die verfügbare Höhe proportional zu diesem Bedarf.
 4. Erzeuge innerhalb jedes Bands für jedes `vertical`-Element einen eigenen Track und fasse aufeinanderfolgende `horizontal`-Elemente zu einem gestapelten Track zusammen.
 5. Beende bei einem `horizontal`-Flush den aktuellen Track zwingend. Das nachfolgende Element startet einen neuen Track, auch wenn seine Richtung ansonsten eine Fortsetzung erlaubt hätte.
 6. Teile die verfügbare Breite eines Bands anhand der effektiven Track-Gewichte auf. Deren Berechnung ist in Abschnitt 7.3 festgelegt.
 7. Ordne Elemente eines horizontalen Blocks vertikal nach YAML-Reihenfolge an. Die Höhe ihrer Layout-Slots wird durch explizite oder automatisch berechnete `layout.layerWeight`-Werte bestimmt.
-8. Blatt-Capabilities werden nicht auf die volle Track-Höhe gestreckt, sondern behalten ihre kompakte intrinsische Höhe. Nicht benötigte Resthöhe bleibt innerhalb des Tracks frei.
+8. Jedes fachliche Element füllt seinen zugewiesenen Layout-Slot in Breite und Höhe vollständig aus. Blatt-Capabilities verwenden weiterhin eine kompakte Inhaltsdarstellung, ihre äußere Box wird jedoch auf die vollständige Slot-Größe gestreckt.
 9. Ziehe definierte Abstände, Rahmen, Innenabstände und den Headerbereich ab, bevor Kind-Layouts berechnet werden.
 10. Wende denselben Algorithmus auf Gruppeninhalte und die sichtbaren Kinder jeder Nicht-Blatt-Capability an.
+
+Das Ergebnis jeder rekursiven Elementliste ist ein vollständiges rechteckiges Tiling ihres Inhaltsbereichs: Abgesehen von explizit definierten Gaps, Rahmen, Namensbereichen und Innenabständen bleibt keine unzugewiesene Restfläche. Insbesondere darf kein intrinsisches Mindest- oder Kompaktmaß dazu führen, dass ein bereits berechneter Slot nur teilweise durch sein Element belegt wird.
 
 `layout.trackWeight` ist nur am ersten fachlichen Element eines Tracks erlaubt. `layout.layerWeight` ist nur an `horizontal`-Elementen erlaubt. Verstöße erzeugen einen Validierungsfehler mit Lösungshinweis. Flushes selbst besitzen keine Gewichte.
 
@@ -294,7 +297,7 @@ Für jede Elementliste wird rekursiv folgender Algorithmus angewendet:
 
 Der bevorzugte Platzbedarf wird deterministisch berechnet:
 
-1. Eine Blatt-Capability erhält eine kompakte Mindesthöhe. Ihre bevorzugte Breite ergibt sich aus Icon, vollständigem Namen, Form und horizontalen Innenabständen, begrenzt durch zentrale Mindest- und Höchstwerte.
+1. Eine Blatt-Capability liefert für die automatische Gewichtung einen kompakten bevorzugten Platzbedarf. Dieser Bedarf beeinflusst die relative Slot-Aufteilung, begrenzt aber nicht die anschließend zugewiesene äußere Boxgröße.
 2. Ein Chevron berücksichtigt zusätzlich seine Pfeilspitze und die Überlappung mit direkt angrenzenden Chevrons.
 3. Der Bedarf einer Nicht-Blatt-Capability ergibt sich aus Header, Innenabständen und dem rekursiv berechneten Bedarf ihres Kind-Layouts.
 4. Der Bedarf einer Gruppe ergibt sich aus Namensbereich, Innenabständen und dem rekursiv berechneten Bedarf ihrer Inhalte.
@@ -308,7 +311,7 @@ Für die tatsächliche Breitenverteilung gilt:
 - Automatisch abgeleitete Gewichte werden über zentrale Layout-Tokens auf einen sinnvollen Korridor begrenzt; initial gilt `0,5` bis `3`. Dadurch beeinflussen große Unterbäume die Breite, ohne einzelne Tracks unverhältnismäßig dominant werden zu lassen.
 - Ein explizites Gewicht von `1` entspricht damit ungefähr einem Track mit medianem automatischem Platzbedarf.
 - Die verfügbaren Pixel werden anschließend proportional zu allen effektiven Gewichten verteilt und unter Beachtung der Mindestbreiten gerundet. Rundungsreste gehen in YAML-Reihenfolge an die ersten Tracks.
-- Die Berechnung wird bei Filter-, Collapse- und Fokusänderungen mit dem jeweils sichtbaren Baum erneut ausgeführt.
+- Die Berechnung wird bei Filter-, Collapse- und Fokusänderungen mit dem jeweils sichtbaren Baum erneut ausgeführt. Verdeckte Nachfahren dürfen dabei keinen historischen oder zwischengespeicherten Platzbedarf beibehalten.
 
 Für die Höhenverteilung innerhalb eines horizontal gestapelten Tracks gilt analog:
 
@@ -316,7 +319,7 @@ Für die Höhenverteilung innerhalb eines horizontal gestapelten Tracks gilt ana
 - Fehlt `layout.layerWeight`, wird der bevorzugte Höhenbedarf des Elements durch den Median der automatisch gewichteten Layer desselben Tracks geteilt.
 - Automatisch abgeleitete `layerWeight`-Werte werden ebenfalls auf den Korridor `0,5` bis `3` begrenzt.
 - Ein explizites `layerWeight: 1` entspricht ungefähr einem Layer mit medianem automatischem Höhenbedarf.
-- Die verfügbare Track-Höhe wird proportional zu den effektiven Layer-Gewichten verteilt. Eine Blatt-Capability behält innerhalb ihres Slots dennoch ihre kompakte intrinsische Darstellung; zusätzlicher Slot-Platz wird nicht durch eine vergrößerte Blatt-Box gefüllt.
+- Die verfügbare Track-Höhe wird proportional zu den effektiven Layer-Gewichten verteilt. Jede Capability- oder Gruppenbox belegt anschließend die vollständige Höhe ihres Slots; die kompakte Blattdarstellung betrifft ausschließlich ihren Inhalt.
 - Das frühere Feld `layout.weight` ist ungültig und wird weder normalisiert noch stillschweigend migriert.
 
 ### 7.4 Beispiele für Richtungen und Flushes
@@ -367,18 +370,20 @@ Ein `vertical`-Flush beginnt dagegen ein neues Band unterhalb des bisherigen Lay
 [Cap C] | [Cap D]
 ```
 
-### 7.5 Kompakte Blätter, Platzmangel und semantischer Zoom
+### 7.5 Kompakte Blattinhalte, Platzmangel und semantischer Zoom
 
-- Blatt-Capabilities besitzen eine zentrale kompakte Höhe und werden ausschließlich mit Name sowie optionalem Icon und Zustandsmarkierungen gerendert.
+- Blatt-Capabilities besitzen einen kompakten bevorzugten Platzbedarf und werden ausschließlich mit Name sowie optionalem Icon und Zustandsmarkierungen gerendert. Ihre äußere Box füllt dennoch den vollständigen berechneten Slot.
 - Beschreibungen werden unabhängig vom verfügbaren Platz niemals in der Map gerendert.
 - Nicht-Blatt-Capabilities und Gruppen besitzen Mindestmaße für sinnvoll darstellbare Inhalte.
 - Bei abnehmendem Platz verschwinden in dieser Reihenfolge: Metadaten-Vorschau, Icon.
+- Die Icon-Sichtbarkeit richtet sich nach der tatsächlich nutzbaren Höhe des kompakten Headers, nicht nach dem bevorzugten Platzbedarf einer Blatt-Capability. Das 14-px-Icon bleibt ab 28 px interner Boxhöhe sichtbar und entfällt erst darunter.
+- Capability-Namen dürfen abhängig von der tatsächlich nutzbaren Headerhöhe über mehrere Zeilen umbrechen. Sehr flache Boxen bleiben einzeilig; reguläre Header unterstützen bis zu zwei und ausreichend hohe kompakte Boxen bis zu drei Zeilen.
 - Name und Zustandsindikatoren bleiben möglichst lange sichtbar.
-- Reicht der Platz für Kinder nicht aus, werden sie in dieser Ansicht nicht gerendert. Die Elternkachel zeigt die Zahl der momentan nicht dargestellten Nachfahren.
+- Ausgeklappte sichtbare Kinder behalten auch bei knappem Platz ihre Layout-Slots. Der semantische Zoom reduziert zunächst deren innere Inhalte und Zustandsdetails, nicht jedoch die fachlichen Elemente selbst.
 - Die Daten bleiben erhalten; Fokus auf die Elternkachel nutzt die gesamte Map-Fläche für deren Unterbaum.
 - Eingeklappte oder weggefilterte Unterbäume werden nicht an das Visualisierungs-Framework übergeben.
 
-Die konkrete Mindestgröße wird in der Implementierung als zentraler Design-Token festgelegt und durch visuelle Tests abgesichert.
+Die konkreten Mindestgrößen werden in der Implementierung als zentrale Design-Tokens festgelegt und durch automatisierte sowie visuelle Tests abgesichert.
 
 ### 7.6 Gruppen auf zwei Ebenen
 
@@ -390,7 +395,8 @@ Die konkrete Mindestgröße wird in der Implementierung als zentraler Design-Tok
 - Die Gruppenfarbe wird nicht an enthaltene Capabilities vererbt.
 - Eine Gruppe der zweiten Ebene wird vollständig innerhalb des Inhaltsbereichs ihrer Elterngruppe berechnet und darf deren Namensbereich oder Rahmen nicht überlagern.
 - Eingeklappte `vertical`-Gruppen bleiben als schmale Säule sichtbar; eingeklappte `horizontal`-Gruppen als flache Ebene.
-- Besteht ein Track ausschließlich aus eingeklappten Gruppen, wird seine zuvor berechnete Breite beziehungsweise Höhe freigegeben. Der Track behält nur den für die vollständige Gruppenbeschriftung erforderlichen Platz; die übrigen Tracks des Elterncontainers teilen den frei gewordenen Platz neu untereinander auf.
+- Besteht ein vertikaler Track ausschließlich aus einer eingeklappten Gruppe, wird seine zuvor berechnete Breite freigegeben und auf die schmale Platzhalterbreite reduziert.
+- Besteht ein gestapelter horizontaler Track ausschließlich aus eingeklappten horizontalen Gruppen, bleibt er ebenfalls auf die schmale Platzhalterbreite reduziert. Seine Gruppen teilen sich jedoch proportional zu ihren effektiven `layerWeight`-Werten die vollständige verfügbare Track-Höhe. Ohne explizite Gewichte erfolgt die Aufteilung automatisch; bei gleichem Bedarf gleichmäßig. Die Namen aller Gruppen werden in diesem Sonderfall vollständig, ohne Umbruch und vertikal dargestellt.
 - Der Gruppenname wird stets vollständig und ohne Ellipse dargestellt. Der reservierte Namensbereich wächst bei Bedarf; in einer eingeklappten vertikalen Gruppe wird der Name platzsparend vertikal gesetzt.
 - Im eingeklappten Zustand dient der gesamte farbige Platzhalter samt Gruppenname als Aufklappfläche mit technischem Tooltip beziehungsweise zugänglichem Namen; ein eigener sichtbarer Button oder ein Chevron wird nicht gerendert.
 - Gruppen sind nicht auswählbar, nicht fokussierbar und öffnen kein Detailpanel.
@@ -421,13 +427,14 @@ Die konkrete Mindestgröße wird in der Implementierung als zentraler Design-Tok
 
 - `visualization.shape: box` ist der Standard und verwendet die bestehende abgerundete Rechteckdarstellung.
 - Chevrons sind in dieser Ausbaustufe ausschließlich für Blatt-Capabilities zulässig. Ein Chevron mit `children` ist ein Validierungsfehler mit dem Hinweis, entweder die Kinder zu entfernen oder `shape: box` zu verwenden.
-- Bei `visualization.shape: chevron` und `layout.direction: vertical` wird die gesamte kompakte Capability als nach rechts gerichteter Chevron dargestellt. Direkt aufeinanderfolgende Chevron-Geschwister werden innerhalb desselben Bands von links nach rechts mit konsistentem Abstand oder leichter geometrischer Überlappung als zusammenhängender Wertstrom dargestellt.
-- Bei `visualization.shape: chevron` und `layout.direction: horizontal` bleibt die kompakte Capability-Fläche rechteckig. Ein kleiner, links angebrachter und nach unten gerichteter Chevron deutet den vertikalen Wertstrom an. Die linken Indikatoren aufeinanderfolgender horizontaler Chevron-Capabilities sind ausgerichtet und werden visuell verbunden.
-- Auch das letzte Element eines horizontalen Chevron-Wertstroms zeigt seinen linken, nach unten gerichteten Chevron, jedoch ohne weiterführende Verbindung zum nächsten Element.
+- Bei `visualization.shape: chevron` und `layout.direction: vertical` wird die gesamte Capability als nach rechts gerichtetes Wertstromsegment dargestellt. Die sichtbare Form besitzt links eine Einbuchtung und rechts eine Pfeilspitze. Direkt aufeinanderfolgende Chevron-Geschwister greifen mit einem kleinen, zentral definierten Abstand oder einer leichten Überlappung optisch ineinander und bilden eine zusammenhängende horizontale Kette.
+- Vertikale Chevron-Segmente besitzen entlang ihrer vollständigen Polygonkontur dieselbe charakteristische graue Umrandung wie reguläre Capability-Boxen. Auswahl- und Suchrahmen liegen weiterhin außerhalb dieser Kontur.
+- Bei `visualization.shape: chevron` und `layout.direction: horizontal` wird die Capability bis auf Weiteres wie eine reguläre abgerundete Box dargestellt. Es gibt weder einen linken Abwärts-Chevron noch eine vertikale Verbindungslinie. Der YAML-Wert `shape: chevron` bleibt erhalten, damit die spezialisierte horizontale Darstellung später ohne Schemaänderung wieder eingeführt werden kann.
 - Boxen und Flushes unterbrechen eine Chevron-Kette in der jeweiligen Flussrichtung.
 - Ein Chevron unterstützt dieselben wirksamen Farben, Icons, Auswahl-, Such-, Filter- und Doppelklick-Interaktionen wie eine Box.
 - Der Capability-Name muss vollständig zugänglich bleiben. Reicht die sichtbare Chevron-Breite nicht aus, darf der Name visuell gekürzt werden, muss aber über Tooltip und zugänglichen Namen vollständig verfügbar sein.
-- Form, Pfeilwinkel, Überlappung und Innenabstände werden als zentrale Design-Tokens umgesetzt und nicht pro YAML-Element konfiguriert.
+- Die eigentliche Pfeilform liegt innerhalb eines ungeclippten äußeren Interaktions-Wrappers. Auswahlrahmen, Suchmarkierung und Fokuszustand bleiben dadurch vollständig sichtbar.
+- Form, Pfeilwinkel, Segmentbreite, Überlappung und Innenabstände werden als zentrale Design-Tokens umgesetzt und nicht pro YAML-Element konfiguriert.
 
 ## 9. Suche, Filter und Sichtbarkeit
 
@@ -452,9 +459,19 @@ Die Suche berücksichtigt mindestens `name`, `description`, `owner`, `responsibi
 
 Der Einklappzustand wird getrennt über Capability- und Gruppen-IDs verwaltet und als separater UI-Zustand in `localStorage` gespeichert. Er ist kein Bestandteil des YAML und darf beim Speichern oder Exportieren des YAML niemals dort hineingeschrieben werden. Zustände für IDs, die im aktuellen Dokument nicht mehr vorkommen, werden beim Laden verworfen. Filter oder Suche dürfen notwendige Capability-Ahnen und Gruppen temporär öffnen, verändern aber nicht den gespeicherten manuellen Einklappzustand. Gruppen verschwinden niemals vollständig.
 
+Existiert für die aktuelle Map noch kein gespeicherter Zustand, startet sie deterministisch in „Ebene 1“:
+
+- Gruppen der ersten und zweiten Ebene bleiben ausgeklappt, damit die Grundstruktur sichtbar ist.
+- „Ebene 1“ zeigt ausschließlich die obersten Capabilities; alle Capabilities mit Kindern sind eingeklappt.
+- „Ebene 2“, „Ebene 3“ und „Vollständig“ erweitern die sichtbare Capability-Tiefe deterministisch.
+- Manuelle Änderungen und eine gewählte Ansichtstiefe werden lokal gespeichert.
+- Gespeicherte Zustände des entfernten Profils `overview` werden einmalig auf „Ebene 1“ migriert und anhand der Capability-Tiefe neu erzeugt.
+
+Beim Ein- oder Ausklappen bleibt das betätigte Element als visueller Anker an derselben Bildschirmposition. Das neu berechnete Layout darf daher weder an den oberen Rand springen noch automatisch vollständig eingepasst werden.
+
 ### 9.4 Fokusmodus
 
-Ein Doppelklick auf eine Capability-Box oder einen Capability-Chevron behandelt diese Capability temporär als Wurzel. Der Doppelklick darf weder den Collapse-Zustand verändern noch eine gesonderte Fokus-Schaltfläche erfordern. Eine Breadcrumb-Navigation zeigt den Pfad zur tatsächlichen Wurzel und ermöglicht schrittweise Rückkehr. Suche und Filter bleiben im Fokusmodus aktiv. Gruppen und Flushes können nicht fokussiert werden.
+Ein Doppelklick auf eine Capability-Box oder einen Capability-Chevron behandelt diese Capability temporär als Wurzel. Der Doppelklick darf weder den Collapse-Zustand verändern noch eine gesonderte Fokus-Schaltfläche erfordern. Beim Eintritt wird der bisherige Viewport gespeichert und der fokussierte Teilbaum einmalig eingepasst. Eine Breadcrumb-Navigation zeigt den Pfad zur tatsächlichen Wurzel und ermöglicht schrittweise Rückkehr; beim Verlassen des Fokusmodus wird der vorherige Viewport wiederhergestellt. Suche und Filter bleiben im Fokusmodus aktiv. Gruppen und Flushes können nicht fokussiert werden.
 
 ## 10. Detailpanel
 
@@ -542,7 +559,7 @@ Semantisch validiert werden mindestens:
 | End-to-End-Tests | Playwright | Browserübergreifende Kernabläufe und visuelle Regressionstests |
 | Linting | ESLint mit `typescript-eslint` | Type-aware TypeScript-Regeln und reproduzierbare Qualitätsprüfung |
 
-React Flow übernimmt Viewport, Eingaben und das Rendering verschachtelter Custom Nodes. Es bestimmt nicht die fachliche Anordnung. Eine eigene, pure TypeScript-Layoutfunktion berechnet in einer Bottom-up-Phase zunächst intrinsische Platzbedarfe und in einer Top-down-Phase die verfügbaren absoluten Rechtecke. Anschließend übersetzt der Adapter Capabilities und Gruppen in React-Flow-Nodes mit Elternbezug; Flushes existieren nur in der Layout-Zwischenrepräsentation.
+React Flow übernimmt Viewport, Eingaben und das Rendering verschachtelter Custom Nodes. Es bestimmt nicht die fachliche Anordnung. Eine eigene, pure TypeScript-Layoutfunktion berechnet in einer Bottom-up-Phase zunächst die bevorzugten Platzbedarfe ausschließlich des sichtbaren Baums und weist in einer Top-down-Phase lückenlos die verfügbaren absoluten Rechtecke zu. Anschließend übersetzt der Adapter Capabilities und Gruppen in React-Flow-Nodes mit Elternbezug; Flushes existieren nur in der Layout-Zwischenrepräsentation.
 
 ### 13.2 Schichten
 
@@ -552,7 +569,7 @@ YAML-Text
   -> Schema- und Semantikvalidierung
   -> normalisiertes Capability-Modell
   -> Suche, Filter, Collapse und Fokus
-  -> intrinsische Bottom-up-Platzbedarfsberechnung
+  -> Bottom-up-Platzbedarfsberechnung des sichtbaren Baums
   -> deterministische Top-down-Layout-Engine
   -> React-Flow-Adapter
   -> Map und Detailpanel
@@ -576,6 +593,7 @@ Der Zustand wird in klar getrennte Bereiche aufgeteilt:
 
 - Editor: aktueller YAML-Text, Diagnosen, letzte gültige Normalform;
 - Ansicht: Suche, Filter, Collapse-Set, Fokus-ID, Auswahl-ID;
+- Ansichtsprofil: „Ebene 1“, „Ebene 2“, „Ebene 3“ oder „Vollständig“;
 - Viewport: Zoom und Pan;
 - Persistenz: Speicherstatus und Schema-Version.
 
@@ -639,7 +657,8 @@ Besonders vollständig zu testen sind:
 - gemischte automatische und explizite Layer-Gewichte einschließlich Begrenzung und Rundung;
 - Validierungsfehler und Migrationshinweis für das entfernte Feld `weight`;
 - gemischte Richtungen auf mehreren Ebenen;
-- intrinsisch kompakte Blatt-Capabilities in unterschiedlich großen Tracks;
+- kompakte Blattinhalte, deren äußere Boxen unterschiedlich große Slots jeweils vollständig ausfüllen;
+- lückenloses Tiling jeder rekursiven Inhaltsfläche sowie Neuberechnung ausschließlich aus sichtbaren Elementen nach Collapse-, Filter- und Fokusänderungen;
 - Box- und Chevron-Auflösung einschließlich ungültiger Chevrons mit Kindern;
 - Filterlogik einschließlich Kontext-Ahnen;
 - Wechselwirkung zwischen Filter und manuellem Collapse;
@@ -656,7 +675,8 @@ Besonders vollständig zu testen sind:
 - Reset und Wiederherstellung aus `localStorage`;
 - Filter-, Suche-, Collapse- und Fokusabläufe.
 - Fokus per Doppelklick auf Box und Chevron ohne sichtbare Fokus-Schaltfläche;
-- horizontale Chevron-Wertströme mit linkem Abwärtsindikator einschließlich abweichendem Abschluss des letzten Elements;
+- als normale Boxen dargestellte horizontale Chevron-Konfigurationen ohne Abwärtsindikator oder Verbindungslinie;
+- vertikale Chevron-Wertströme mit grauer Polygonumrandung;
 - horizontales und vertikales Gruppen-Rendering auf zwei Ebenen einschließlich getrenntem Collapse-Zustand.
 
 ### 15.3 End-to-End- und visuelle Tests
@@ -677,15 +697,18 @@ Besonders vollständig zu testen sind:
 Für reproduzierbare Funktions-, Layout-, visuelle und Performanceprüfungen wird eine versionierte YAML-Referenzdatei mit folgenden Eigenschaften eingecheckt:
 
 - insgesamt 480 bis 520 Capabilities;
+- genau fünf fachlich benannte Gruppen der ersten Ebene;
+- pro Hauptgruppe null bis drei Gruppen der zweiten Ebene; in Summe ungefähr acht bis zehn Untergruppen;
+- pro Untergruppe ungefähr fünf strukturierende Capabilities und darunter überwiegend acht bis zehn Blatt-Capabilities;
 - ein bis vier Capability-Ebenen, wobei nicht jeder Ast dieselbe Tiefe besitzt;
 - Gruppen der ersten und zweiten Ebene in horizontaler und vertikaler Richtung;
 - ungruppierte Capabilities neben Gruppen;
 - horizontale und vertikale Flushes in Root-, Gruppen- und `children`-Listen;
 - automatische Track- und Layer-Gewichtung sowie gezielte explizite `trackWeight`- und `layerWeight`-Ausnahmen;
-- kompakte Blatt-Capabilities als Boxen und als zusammenhängende Chevron-Wertströme;
+- kompakte Blatt-Capabilities überwiegend als Boxen; Chevrons werden nur in fachlich zusammenhängenden Wertströmen aus ungefähr drei bis sechs Schritten verwendet und machen höchstens ungefähr 20 Prozent der Blätter aus;
 - kurze, mittlere und sehr lange deutsche sowie englische Namen, darunter lange zusammengesetzte deutsche Wörter;
 - unterschiedlich lange Beschreibungen, die ausschließlich im Detailpanel sichtbar sind;
-- variierende Icons, Farben, Verantwortlichkeiten, Tags, Metadaten und Vererbungskonstellationen;
+- semantisch passende und variierende Icons für jede Capability sowie unterschiedliche Farben, Verantwortlichkeiten, Tags, Metadaten und Vererbungskonstellationen;
 - mehrere bewusst filter- und suchbare Merkmalskombinationen;
 - ein deterministischer Inhalt: entweder als statische Datei oder aus einem Generator mit festem Seed, wobei CI und lokale Entwicklung exakt dasselbe Ergebnis verwenden.
 
@@ -705,15 +728,16 @@ Das MVP gilt als abgenommen, wenn:
 8. Farb- und Icon-Vererbung korrekt funktioniert;
 9. Suche, Metadatenfilter, Collapse und der ausschließlich per Doppelklick aktivierte Fokusmodus korrekt zusammenspielen;
 10. Auswahl einer Capability alle definierten Details im Panel zeigt;
-11. Zoom, Pan und „Ansicht einpassen“ funktionieren;
+11. Zoom, Pan, „Ansicht einpassen“, Viewport-Ankerung beim Collapse sowie Wiederherstellung des Viewports nach dem Fokusmodus funktionieren;
 12. die komplexe Referenzmap mit ungefähr 500 Capabilities und bis zu vier Capability-Ebenen die Performance-Ziele im vereinbarten Testsystem erfüllt;
 13. Desktop-Browser und Tablet-Darstellung gemäß Zielrahmen getestet sind;
 14. Linting, Typecheck, automatisierte Tests und Produktions-Build erfolgreich durchlaufen;
 15. die Map keine grafische Bearbeitung zulässt und vollständig aus dem YAML reproduzierbar ist;
 16. gruppierte und ungruppierte Root-Capabilities gemeinsam darstellbar sind, Gruppen bis zur zweiten Gruppenebene funktionieren, Gruppenfarben nicht vererbt werden und eingeklappte Gruppen als schmale, vollständig beschriftete Struktur sichtbar bleiben;
-17. Blatt-Capabilities unabhängig vom verfügbaren Raum kompakt bleiben und Beschreibungen ausschließlich im Detailpanel erscheinen;
-18. Blatt-Capabilities sowohl als Box als auch richtungsabhängig als vollflächiger Rechts-Chevron oder als rechteckiges Element mit linkem Abwärts-Chevron dargestellt werden können;
-19. die Referenzdatei alle in Abschnitt 15.4 definierten Varianzmerkmale reproduzierbar abdeckt.
+17. Blatt-Capabilities kompakte Inhalte besitzen, ihre äußeren Boxen den zugewiesenen Slot vollständig ausfüllen und Beschreibungen ausschließlich im Detailpanel erscheinen;
+18. vertikale Blatt-Capabilities als vollflächiger Rechts-Chevron mit grauer Polygonumrandung und horizontale Chevron-Konfigurationen vorläufig als normale Box dargestellt werden;
+19. die Referenzdatei alle in Abschnitt 15.4 definierten Varianzmerkmale reproduzierbar abdeckt;
+20. eine Map ohne gespeicherten Ansichtsstatus in „Ebene 1“ startet und alle Ansichtsprofile reproduzierbare Tiefen erzeugen.
 
 ## 17. Ausbaustufen
 
@@ -748,8 +772,12 @@ Für den späteren PowerPoint-Export sind insbesondere Exportumfang (vollständi
 5. Gruppen enthalten mindestens eine Capability, bleiben bei Filtern immer strukturell sichtbar und zeigen ihren vollständigen Namen auch im eingeklappten farbigen Platzhalter.
 6. Gruppen der zweiten Ebene sind ausschließlich direkt in einer Root-Gruppe zulässig. Gruppen innerhalb von Capability-`children` und eine dritte Gruppenebene sind verboten.
 7. Ein `horizontal`-Flush beginnt rechts einen neuen Track; ein `vertical`-Flush beginnt darunter ein neues Band. Jede Elementliste darf beliebig viele Flushes beider Richtungen enthalten und abwechseln. Führende, abschließende und direkt aufeinanderfolgende Flushes sind ungültig.
-8. `visualization.shape: chevron` ist ausschließlich für Blatt-Capabilities zulässig. Vertikale Elemente verwenden einen vollflächigen Rechts-Chevron; horizontal gestapelte Elemente bleiben rechteckig und verwenden links einen Abwärts-Chevron. Das letzte horizontale Element zeigt den Indikator ohne ausgehende Verbindung.
+8. `visualization.shape: chevron` ist ausschließlich für Blatt-Capabilities zulässig. Vertikale Elemente verwenden einen vollflächigen Rechts-Chevron mit grauer Polygonumrandung; horizontal gestapelte Elemente werden vorläufig vollständig wie normale Boxen dargestellt.
 9. Explizite `trackWeight`- und `layerWeight`-Werte überschreiben die jeweilige automatische Bedarfsableitung. Automatische Gewichte werden relativ zum Median normalisiert und initial auf `0,5` bis `3` begrenzt.
 10. Das bisherige `layout.weight` wird durch `layout.layerWeight` ersetzt, nicht als Alias unterstützt und als Validierungsfehler mit Migrationshinweis behandelt.
 11. Die komplexe Referenzmap mit circa 500 Capabilities ist zugleich das standardmäßig geladene Startbeispiel und das Ziel von „Auf Beispiel zurücksetzen“.
 12. Der Fokusmodus wird ausschließlich per Doppelklick auf eine Capability aktiviert; sichtbare Fokus-Schaltflächen entfallen.
+13. Ein- und Ausklappen löst kein automatisches `fitView` aus. Das betätigte Element bleibt als Viewport-Anker stabil; ein vorheriger Viewport wird nach Verlassen des Fokusmodus wiederhergestellt.
+14. Ohne gespeicherten Ansichtsstatus startet die Map in „Ebene 1“. Manuelle Collapse-Zustände und das Ansichtsprofil werden ausschließlich lokal gespeichert; alte `overview`-Zustände werden auf „Ebene 1“ migriert.
+15. Die Referenzmap enthält fünf fachliche Hauptgruppen mit null bis drei Untergruppen und verwendet Chevrons nur für zusammenhängende Wertströme.
+16. Jede rekursive Elementliste teilt ihren verfügbaren Inhaltsbereich vollständig unter den aktuell sichtbaren Elementen auf. Verdeckte Ebenen beeinflussen weder automatische Track- noch Layer-Gewichte; kompakte Blattmaße dürfen keine leeren Slot-Restflächen erzeugen.

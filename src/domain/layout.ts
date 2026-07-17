@@ -1,6 +1,8 @@
 import type {
+  LayoutDirection,
   VisibleCapability,
   VisibleCapabilityGroup,
+  VisibleGroupItem,
   VisibleRootItem,
 } from './types';
 
@@ -18,6 +20,7 @@ export interface CapabilityLayoutNode {
   parentId?: string;
   renderedChildCount: number;
   hiddenDescendantCount: number;
+  chevronContinues: boolean;
 }
 
 export interface GroupLayoutNode {
@@ -25,6 +28,8 @@ export interface GroupLayoutNode {
   item: VisibleCapabilityGroup;
   rect: LayoutRect;
   labelSize: number;
+  collapsedTrackFill: boolean;
+  parentId?: string;
 }
 
 export type RootLayoutNode = CapabilityLayoutNode | GroupLayoutNode;
@@ -40,15 +45,25 @@ export interface LayoutOptions {
   groupHeaderHeight?: number;
   groupLabelWidth?: number;
   collapsedGroupSize?: number;
+  leafHeight?: number;
 }
 
-type CapabilityTrack =
-  | { kind: 'vertical'; items: [VisibleCapability]; weight: number }
-  | { kind: 'horizontal'; items: VisibleCapability[]; weight: number };
+type VisibleElement = VisibleCapability | VisibleCapabilityGroup;
+type ElementList = VisibleRootItem[] | VisibleGroupItem[];
 
-type RootTrack =
-  | { kind: 'vertical'; items: [VisibleRootItem]; weight: number; fixedSize?: number }
-  | { kind: 'horizontal'; items: VisibleRootItem[]; weight: number; fixedSize?: number };
+interface IntrinsicSize {
+  width: number;
+  height: number;
+}
+
+export interface LayoutTrack {
+  kind: 'vertical' | 'horizontal';
+  items: VisibleElement[];
+}
+
+interface LayoutBand {
+  tracks: LayoutTrack[];
+}
 
 const DEFAULTS: Required<LayoutOptions> = {
   width: 1600,
@@ -56,107 +71,219 @@ const DEFAULTS: Required<LayoutOptions> = {
   gap: 12,
   padding: 12,
   headerHeight: 48,
-  minChildWidth: 120,
-  minChildHeight: 72,
+  minChildWidth: 1,
+  minChildHeight: 1,
   groupHeaderHeight: 38,
   groupLabelWidth: 118,
   collapsedGroupSize: 22,
+  leafHeight: 58,
 };
 
+const MIN_AUTO_WEIGHT = 0.5;
+const MAX_AUTO_WEIGHT = 3;
+const MIN_LEAF_WIDTH = 150;
+const MAX_LEAF_WIDTH = 340;
 const GROUP_LABEL_AVERAGE_CHARACTER_WIDTH = 6.4;
 const GROUP_LABEL_PADDING = 20;
 
-function directionOf(item: VisibleRootItem) {
-  return item.kind === 'group'
-    ? item.group.layout.direction
-    : item.capability.layout.direction;
+function directionOf(item: VisibleElement): LayoutDirection {
+  return item.kind === 'group' ? item.group.layout.direction : item.capability.layout.direction;
 }
 
-function weightOf(item: VisibleRootItem) {
-  return item.kind === 'group' ? item.group.layout.weight : item.capability.layout.weight;
+function layerWeightOf(item: VisibleElement): number | undefined {
+  return item.kind === 'group' ? item.group.layout.layerWeight : item.capability.layout.layerWeight;
 }
 
-function trackWeightOf(item: VisibleRootItem) {
-  return item.kind === 'group'
-    ? item.group.layout.trackWeight
-    : item.capability.layout.trackWeight;
+function trackWeightOf(item: VisibleElement): number | undefined {
+  return item.kind === 'group' ? item.group.layout.trackWeight : item.capability.layout.trackWeight;
 }
 
-export function groupIntoTracks(items: VisibleCapability[]): CapabilityTrack[] {
-  const tracks: CapabilityTrack[] = [];
-  let index = 0;
-  while (index < items.length) {
-    const item = items[index];
-    if (!item) break;
-    if (item.capability.layout.direction === 'vertical') {
-      tracks.push({ kind: 'vertical', items: [item], weight: item.capability.layout.weight });
-      index += 1;
-      continue;
+function median(values: number[]): number {
+  if (values.length === 0) return 1;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? ((sorted[middle - 1] ?? 1) + (sorted[middle] ?? 1)) / 2
+    : (sorted[middle] ?? 1);
+}
+
+function clampWeight(value: number): number {
+  return Math.min(MAX_AUTO_WEIGHT, Math.max(MIN_AUTO_WEIGHT, value));
+}
+
+function splitIntoBands(items: ElementList): LayoutBand[] {
+  const bands: LayoutBand[] = [];
+  let currentTokens: VisibleRootItem[] = [];
+  const finishBand = () => {
+    if (currentTokens.length > 0) bands.push({ tracks: tokensIntoTracks(currentTokens) });
+    currentTokens = [];
+  };
+
+  items.forEach((item) => {
+    if (item.kind === 'flush' && item.direction === 'vertical') {
+      finishBand();
+    } else {
+      currentTokens.push(item);
     }
+  });
+  finishBand();
+  return bands;
+}
 
-    const block: VisibleCapability[] = [];
-    while (items[index]?.capability.layout.direction === 'horizontal') {
-      block.push(items[index] as VisibleCapability);
-      index += 1;
+function tokensIntoTracks(tokens: VisibleRootItem[]): LayoutTrack[] {
+  const tracks: LayoutTrack[] = [];
+  let horizontalBlock: VisibleElement[] = [];
+  const finishHorizontalBlock = () => {
+    if (horizontalBlock.length > 0) {
+      tracks.push({ kind: 'horizontal', items: horizontalBlock });
+      horizontalBlock = [];
     }
-    tracks.push({
-      kind: 'horizontal',
-      items: block,
-      weight: block[0]?.capability.layout.trackWeight ?? 1,
-    });
-  }
+  };
+
+  tokens.forEach((token) => {
+    if (token.kind === 'flush') {
+      finishHorizontalBlock();
+      return;
+    }
+    if (directionOf(token) === 'vertical') {
+      finishHorizontalBlock();
+      tracks.push({ kind: 'vertical', items: [token] });
+    } else {
+      horizontalBlock.push(token);
+    }
+  });
+  finishHorizontalBlock();
   return tracks;
 }
 
-function groupRootItemsIntoTracks(
-  items: VisibleRootItem[],
-  config: Required<LayoutOptions>,
-): RootTrack[] {
-  const tracks: RootTrack[] = [];
-  let index = 0;
-  while (index < items.length) {
-    const item = items[index];
-    if (!item) break;
-    if (directionOf(item) === 'vertical') {
-      tracks.push({
-        kind: 'vertical',
-        items: [item],
-        weight: weightOf(item),
-        fixedSize: item.kind === 'group' && item.collapsed ? config.collapsedGroupSize : undefined,
-      });
-      index += 1;
-      continue;
-    }
+export function groupIntoTracks(items: VisibleCapability[]): LayoutTrack[] {
+  return tokensIntoTracks(items);
+}
 
-    const block: VisibleRootItem[] = [];
-    while (items[index] && directionOf(items[index] as VisibleRootItem) === 'horizontal') {
-      block.push(items[index] as VisibleRootItem);
-      index += 1;
-    }
-    tracks.push({
-      kind: 'horizontal',
-      items: block,
-      weight: trackWeightOf(block[0] as VisibleRootItem) ?? 1,
-      fixedSize: block.every((entry) => entry.kind === 'group' && entry.collapsed)
-        ? Math.max(
-            ...block.map((entry) =>
-              entry.kind === 'group'
-                ? Math.max(
-                    config.groupLabelWidth,
-                    GROUP_LABEL_PADDING +
-                      entry.group.name.length * GROUP_LABEL_AVERAGE_CHARACTER_WIDTH,
-                  )
-                : 0,
-            ),
-          )
-        : undefined,
-    });
-  }
-  return tracks;
+function fachChildren(item: VisibleCapability): VisibleCapability[] {
+  return item.children.filter((child): child is VisibleCapability => child.kind === 'capability');
 }
 
 function countVisibleDescendants(item: VisibleCapability): number {
-  return item.children.reduce((count, child) => count + 1 + countVisibleDescendants(child), 0);
+  return fachChildren(item).reduce((count, child) => count + 1 + countVisibleDescendants(child), 0);
+}
+
+function collapsedGroupIntrinsic(
+  item: VisibleCapabilityGroup,
+  config: Required<LayoutOptions>,
+): IntrinsicSize {
+  const nameWidth = Math.max(
+    config.groupLabelWidth,
+    GROUP_LABEL_PADDING + item.group.name.length * GROUP_LABEL_AVERAGE_CHARACTER_WIDTH,
+  );
+  return item.group.layout.direction === 'vertical'
+    ? { width: config.collapsedGroupSize, height: nameWidth }
+    : { width: nameWidth, height: config.collapsedGroupSize };
+}
+
+function intrinsicElement(
+  item: VisibleElement,
+  config: Required<LayoutOptions>,
+  cache: Map<VisibleElement, IntrinsicSize>,
+): IntrinsicSize {
+  const cached = cache.get(item);
+  if (cached) return cached;
+
+  let size: IntrinsicSize;
+  if (item.kind === 'group') {
+    if (item.collapsed) {
+      size = collapsedGroupIntrinsic(item, config);
+    } else {
+      const content = intrinsicList(item.capabilities, config, cache);
+      const vertical = item.group.layout.direction === 'vertical';
+      size = vertical
+        ? {
+            width: Math.max(config.groupLabelWidth, content.width + config.padding * 2),
+            height: config.groupHeaderHeight + content.height + config.padding * 2,
+          }
+        : {
+            width: config.groupHeaderHeight + content.width + config.padding * 2,
+            height: Math.max(config.groupHeaderHeight, content.height + config.padding * 2),
+          };
+    }
+  } else if (fachChildren(item).length === 0) {
+    const textWidth = 68 + item.capability.name.length * 6.2;
+    size = {
+      width: Math.min(MAX_LEAF_WIDTH, Math.max(MIN_LEAF_WIDTH, textWidth)),
+      height: config.leafHeight,
+    };
+  } else {
+    const content = intrinsicList(item.children, config, cache);
+    size = {
+      width: Math.max(MIN_LEAF_WIDTH, content.width + config.padding * 2),
+      height: config.headerHeight + content.height + config.padding * 2,
+    };
+  }
+  cache.set(item, size);
+  return size;
+}
+
+function intrinsicTrack(
+  track: LayoutTrack,
+  config: Required<LayoutOptions>,
+  cache: Map<VisibleElement, IntrinsicSize>,
+): IntrinsicSize {
+  const sizes = track.items.map((item) => intrinsicElement(item, config, cache));
+  if (track.kind === 'vertical') return sizes[0] ?? { width: 0, height: 0 };
+  return {
+    width: Math.max(0, ...sizes.map((size) => size.width)),
+    height: sizes.reduce((sum, size) => sum + size.height, 0) + config.gap * Math.max(0, sizes.length - 1),
+  };
+}
+
+function intrinsicBand(
+  band: LayoutBand,
+  config: Required<LayoutOptions>,
+  cache: Map<VisibleElement, IntrinsicSize>,
+): IntrinsicSize {
+  const sizes = band.tracks.map((track) => intrinsicTrack(track, config, cache));
+  return {
+    width: sizes.reduce((sum, size) => sum + size.width, 0) + config.gap * Math.max(0, sizes.length - 1),
+    height: Math.max(0, ...sizes.map((size) => size.height)),
+  };
+}
+
+function intrinsicList(
+  items: ElementList,
+  config: Required<LayoutOptions>,
+  cache: Map<VisibleElement, IntrinsicSize>,
+): IntrinsicSize {
+  const bands = splitIntoBands(items);
+  const sizes = bands.map((band) => intrinsicBand(band, config, cache));
+  return {
+    width: Math.max(0, ...sizes.map((size) => size.width)),
+    height: sizes.reduce((sum, size) => sum + size.height, 0) + config.gap * Math.max(0, sizes.length - 1),
+  };
+}
+
+interface AllocationEntry {
+  preferred: number;
+  explicitWeight?: number;
+  fixedSize?: number;
+}
+
+function allocateSizes(entries: AllocationEntry[], totalSize: number, gap: number): number[] {
+  const usableSize = Math.max(0, totalSize - gap * Math.max(0, entries.length - 1));
+  const fixedSize = entries.reduce((sum, entry) => sum + (entry.fixedSize ?? 0), 0);
+  const flexibleSize = Math.max(0, usableSize - fixedSize);
+  const automaticPreferred = entries
+    .filter((entry) => entry.fixedSize === undefined && entry.explicitWeight === undefined)
+    .map((entry) => Math.max(1, entry.preferred));
+  const baseline = median(automaticPreferred);
+  const weights = entries.map((entry) => {
+    if (entry.fixedSize !== undefined) return 0;
+    return entry.explicitWeight ?? clampWeight(Math.max(1, entry.preferred) / baseline);
+  });
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  return entries.map((entry, index) => {
+    if (entry.fixedSize !== undefined) return entry.fixedSize;
+    return totalWeight > 0 ? (flexibleSize * (weights[index] ?? 0)) / totalWeight : 0;
+  });
 }
 
 function groupLabelSize(
@@ -167,151 +294,152 @@ function groupLabelSize(
   if (item.collapsed) {
     return item.group.layout.direction === 'vertical' ? rect.height : rect.width;
   }
-
-  const averageCharacterWidth = GROUP_LABEL_AVERAGE_CHARACTER_WIDTH;
-  const lineHeight = 14;
-  const labelPadding = GROUP_LABEL_PADDING;
-  if (item.group.layout.direction === 'vertical') {
-    const usableWidth = Math.max(averageCharacterWidth, rect.width - labelPadding);
-    const charactersPerLine = Math.max(1, Math.floor(usableWidth / averageCharacterWidth));
-    const lines = Math.ceil(item.group.name.length / charactersPerLine);
-    return Math.max(config.groupHeaderHeight, labelPadding + lines * lineHeight);
-  }
-
-  return config.groupHeaderHeight;
+  if (item.group.layout.direction === 'horizontal') return config.groupHeaderHeight;
+  const usableWidth = Math.max(GROUP_LABEL_AVERAGE_CHARACTER_WIDTH, rect.width - GROUP_LABEL_PADDING);
+  const charactersPerLine = Math.max(1, Math.floor(usableWidth / GROUP_LABEL_AVERAGE_CHARACTER_WIDTH));
+  const lines = Math.ceil(item.group.name.length / charactersPerLine);
+  return Math.max(config.groupHeaderHeight, GROUP_LABEL_PADDING + lines * 14);
 }
 
-function allocateSizes(
-  entries: Array<{ weight: number; fixedSize?: number }>,
-  totalSize: number,
-  gap: number,
-): number[] {
-  const usableSize = Math.max(0, totalSize - gap * Math.max(0, entries.length - 1));
-  const fixedSize = entries.reduce((sum, entry) => sum + (entry.fixedSize ?? 0), 0);
-  const flexibleSize = Math.max(0, usableSize - fixedSize);
-  const totalWeight = entries.reduce(
-    (sum, entry) => sum + (entry.fixedSize === undefined ? entry.weight : 0),
-    0,
-  );
-
-  return entries.map((entry) => {
-    if (entry.fixedSize !== undefined) return entry.fixedSize;
-    return totalWeight > 0 ? (flexibleSize * entry.weight) / totalWeight : 0;
-  });
+function fixedTrackWidth(
+  track: LayoutTrack,
+  config: Required<LayoutOptions>,
+): number | undefined {
+  if (!track.items.every((item) => item.kind === 'group' && item.collapsed)) return undefined;
+  return config.collapsedGroupSize;
 }
 
-function layoutCapabilities(
-  items: VisibleCapability[],
+function fixedLayerHeight(item: VisibleElement, config: Required<LayoutOptions>): number | undefined {
+  return item.kind === 'group' && item.collapsed && directionOf(item) === 'horizontal'
+    ? config.collapsedGroupSize
+    : undefined;
+}
+
+function layoutList(
+  items: ElementList,
   bounds: LayoutRect,
   parentId: string | undefined,
   config: Required<LayoutOptions>,
-  result: CapabilityLayoutNode[],
+  cache: Map<VisibleElement, IntrinsicSize>,
+  result: RootLayoutNode[],
 ): void {
-  if (items.length === 0 || bounds.width <= 0 || bounds.height <= 0) return;
-  const tracks = groupIntoTracks(items);
-  const trackSizes = allocateSizes(tracks, bounds.width, config.gap);
-  let trackX = bounds.x;
-
-  tracks.forEach((track, trackIndex) => {
-    const trackWidth = trackSizes[trackIndex] ?? 0;
-    if (track.kind === 'vertical') {
-      layoutCapability(
-        track.items[0],
-        { x: trackX, y: bounds.y, width: trackWidth, height: bounds.height },
-        parentId,
-        config,
-        result,
-      );
-    } else {
-      const itemSizes = allocateSizes(
-        track.items.map((item) => ({ weight: item.capability.layout.weight })),
-        bounds.height,
-        config.gap,
-      );
-      let itemY = bounds.y;
-      track.items.forEach((item, itemIndex) => {
-        const itemHeight = itemSizes[itemIndex] ?? 0;
-        layoutCapability(
-          item,
-          { x: trackX, y: itemY, width: trackWidth, height: itemHeight },
-          parentId,
-          config,
-          result,
-        );
-        itemY += itemHeight + config.gap;
-      });
-    }
-    trackX += trackWidth + config.gap;
-  });
-}
-
-function layoutCapability(
-  item: VisibleCapability,
-  rect: LayoutRect,
-  parentId: string | undefined,
-  config: Required<LayoutOptions>,
-  result: CapabilityLayoutNode[],
-): void {
-  const childBounds = {
-    x: config.padding,
-    y: config.headerHeight + config.padding,
-    width: rect.width - config.padding * 2,
-    height: rect.height - config.headerHeight - config.padding * 2,
-  };
-  const canRenderChildren =
-    item.children.length > 0 &&
-    childBounds.width >= config.minChildWidth &&
-    childBounds.height >= config.minChildHeight;
-  result.push({
-    kind: 'capability',
-    item,
-    rect,
-    parentId,
-    renderedChildCount: canRenderChildren ? item.children.length : 0,
-    hiddenDescendantCount: canRenderChildren ? 0 : countVisibleDescendants(item),
-  });
-  if (canRenderChildren) {
-    layoutCapabilities(item.children, childBounds, item.capability.id, config, result);
-  }
-}
-
-export function layoutCapabilityTree(
-  roots: VisibleCapability[],
-  options: LayoutOptions = {},
-): CapabilityLayoutNode[] {
-  const config = { ...DEFAULTS, ...options };
-  const result: CapabilityLayoutNode[] = [];
-  layoutCapabilities(
-    roots,
-    { x: 0, y: 0, width: config.width, height: config.height },
-    undefined,
-    config,
-    result,
+  if (bounds.width <= 0 || bounds.height <= 0) return;
+  const bands = splitIntoBands(items);
+  const bandSizes = bands.map((band) => intrinsicBand(band, config, cache));
+  const bandHeights = allocateSizes(
+    bandSizes.map((size) => ({ preferred: size.height, explicitWeight: Math.max(1, size.height) })),
+    bounds.height,
+    config.gap,
   );
-  return result;
+  let bandY = bounds.y;
+
+  bands.forEach((band, bandIndex) => {
+    const bandHeight = bandHeights[bandIndex] ?? 0;
+    const trackSizes = band.tracks.map((track) => intrinsicTrack(track, config, cache));
+    const trackWidths = allocateSizes(
+      band.tracks.map((track, trackIndex) => ({
+        preferred: trackSizes[trackIndex]?.width ?? 1,
+        explicitWeight: trackWeightOf(track.items[0] as VisibleElement),
+        fixedSize: fixedTrackWidth(track, config),
+      })),
+      bounds.width,
+      config.gap,
+    );
+    let trackX = bounds.x;
+
+    band.tracks.forEach((track, trackIndex) => {
+      const trackWidth = trackWidths[trackIndex] ?? 0;
+      if (track.kind === 'vertical') {
+        const item = track.items[0];
+        if (item) {
+          const nextTrack = band.tracks[trackIndex + 1];
+          const nextItem = nextTrack?.kind === 'vertical' ? nextTrack.items[0] : undefined;
+          const chevronContinues =
+            item.kind === 'capability' &&
+            item.capability.shape === 'chevron' &&
+            nextItem?.kind === 'capability' &&
+            nextItem.capability.shape === 'chevron';
+          layoutElement(
+            item,
+            { x: trackX, y: bandY, width: trackWidth, height: bandHeight },
+            parentId,
+            chevronContinues,
+            false,
+            config,
+            cache,
+            result,
+          );
+        }
+      } else {
+        const collapsedTrackFill = track.items.every(
+          (item) => item.kind === 'group' && item.collapsed,
+        );
+        const itemSizes = track.items.map((item) => intrinsicElement(item, config, cache));
+        const itemHeights = allocateSizes(
+          track.items.map((item, itemIndex) => ({
+            preferred: itemSizes[itemIndex]?.height ?? 1,
+            explicitWeight: layerWeightOf(item),
+            fixedSize: collapsedTrackFill ? undefined : fixedLayerHeight(item, config),
+          })),
+          bandHeight,
+          config.gap,
+        );
+        let itemY = bandY;
+        track.items.forEach((item, itemIndex) => {
+          const itemHeight = itemHeights[itemIndex] ?? 0;
+          const next = track.items[itemIndex + 1];
+          const chevronContinues =
+            item.kind === 'capability' &&
+            item.capability.shape === 'chevron' &&
+            next?.kind === 'capability' &&
+            next.capability.shape === 'chevron';
+          layoutElement(
+            item,
+            { x: trackX, y: itemY, width: trackWidth, height: itemHeight },
+            parentId,
+            chevronContinues,
+            collapsedTrackFill,
+            config,
+            cache,
+            result,
+          );
+          itemY += itemHeight + config.gap;
+        });
+      }
+      trackX += trackWidth + config.gap;
+    });
+    bandY += bandHeight + config.gap;
+  });
 }
 
-export function layoutRootItems(
-  roots: VisibleRootItem[],
-  options: LayoutOptions = {},
-): RootLayoutNode[] {
-  const config = { ...DEFAULTS, ...options };
-  const result: RootLayoutNode[] = [];
-  const bounds = { x: 0, y: 0, width: config.width, height: config.height };
-  const tracks = groupRootItemsIntoTracks(roots, config);
-  const trackSizes = allocateSizes(tracks, bounds.width, config.gap);
-  let trackX = bounds.x;
-
-  const layoutRootItem = (item: VisibleRootItem, rect: LayoutRect) => {
-    if (item.kind === 'capability') {
-      const capabilityNodes: CapabilityLayoutNode[] = [];
-      layoutCapability(item, rect, undefined, config, capabilityNodes);
-      result.push(...capabilityNodes);
-      return;
-    }
-
+function layoutElement(
+  item: VisibleElement,
+  slot: LayoutRect,
+  parentId: string | undefined,
+  chevronContinues: boolean,
+  collapsedTrackFill: boolean,
+  config: Required<LayoutOptions>,
+  cache: Map<VisibleElement, IntrinsicSize>,
+  result: RootLayoutNode[],
+): void {
+  if (item.kind === 'group') {
+    const rect = item.collapsed
+      ? {
+          ...slot,
+          width:
+            item.group.layout.direction === 'vertical'
+              ? Math.min(slot.width, config.collapsedGroupSize)
+              : slot.width,
+          height:
+            item.group.layout.direction === 'horizontal'
+              ? collapsedTrackFill
+                ? slot.height
+                : Math.min(slot.height, config.collapsedGroupSize)
+              : slot.height,
+        }
+      : slot;
     const labelSize = groupLabelSize(item, rect, config);
-    result.push({ kind: 'group', item, rect, labelSize });
+    result.push({ kind: 'group', item, rect, labelSize, collapsedTrackFill, parentId });
     if (item.collapsed) return;
     const vertical = item.group.layout.direction === 'vertical';
     const contentBounds: LayoutRect = vertical
@@ -327,50 +455,60 @@ export function layoutRootItems(
           width: rect.width - labelSize - config.padding * 2,
           height: rect.height - config.padding * 2,
         };
-    const capabilityNodes: CapabilityLayoutNode[] = [];
-    layoutCapabilities(
-      item.capabilities,
-      contentBounds,
-      item.group.id,
-      config,
-      capabilityNodes,
-    );
-    result.push(...capabilityNodes);
+    layoutList(item.capabilities, contentBounds, item.group.id, config, cache, result);
+    return;
+  }
+
+  const children = fachChildren(item);
+  const rect = slot;
+  const childBounds = {
+    x: config.padding,
+    y: config.headerHeight + config.padding,
+    width: rect.width - config.padding * 2,
+    height: rect.height - config.headerHeight - config.padding * 2,
   };
-
-  tracks.forEach((track, trackIndex) => {
-    const trackWidth = trackSizes[trackIndex] ?? 0;
-    if (track.kind === 'vertical') {
-      layoutRootItem(track.items[0], {
-        x: trackX,
-        y: bounds.y,
-        width: trackWidth,
-        height: bounds.height,
-      });
-    } else {
-      const itemSizes = allocateSizes(
-        track.items.map((item) => ({
-          weight: weightOf(item),
-          fixedSize:
-            item.kind === 'group' && item.collapsed ? config.collapsedGroupSize : undefined,
-        })),
-        bounds.height,
-        config.gap,
-      );
-      let itemY = bounds.y;
-      track.items.forEach((item, itemIndex) => {
-        const itemHeight = itemSizes[itemIndex] ?? 0;
-        layoutRootItem(item, {
-          x: trackX,
-          y: itemY,
-          width: trackWidth,
-          height: itemHeight,
-        });
-        itemY += itemHeight + config.gap;
-      });
-    }
-    trackX += trackWidth + config.gap;
+  const canRenderChildren =
+    item.children.length > 0 &&
+    children.length > 0 &&
+    childBounds.width >= config.minChildWidth &&
+    childBounds.height >= config.minChildHeight;
+  result.push({
+    kind: 'capability',
+    item,
+    rect,
+    parentId,
+    renderedChildCount: canRenderChildren ? children.length : 0,
+    hiddenDescendantCount: canRenderChildren ? 0 : countVisibleDescendants(item),
+    chevronContinues,
   });
+  if (canRenderChildren) {
+    layoutList(item.children, childBounds, item.capability.id, config, cache, result);
+  }
+}
 
+export function layoutCapabilityTree(
+  roots: VisibleCapability[],
+  options: LayoutOptions = {},
+): CapabilityLayoutNode[] {
+  return layoutRootItems(roots, options).filter(
+    (node): node is CapabilityLayoutNode => node.kind === 'capability',
+  );
+}
+
+export function layoutRootItems(
+  roots: VisibleRootItem[],
+  options: LayoutOptions = {},
+): RootLayoutNode[] {
+  const config = { ...DEFAULTS, ...options };
+  const cache = new Map<VisibleElement, IntrinsicSize>();
+  const intrinsic = intrinsicList(roots, config, cache);
+  const bounds = {
+    x: 0,
+    y: 0,
+    width: options.width ?? Math.max(config.width, intrinsic.width),
+    height: options.height ?? Math.max(config.height, intrinsic.height),
+  };
+  const result: RootLayoutNode[] = [];
+  layoutList(roots, bounds, undefined, config, cache, result);
   return result;
 }

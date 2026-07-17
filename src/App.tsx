@@ -1,18 +1,28 @@
-import { ChevronRight, Code2, Map, RotateCcw, Search, X } from 'lucide-react';
+import { ChevronRight, Code2, Layers3, Map, RotateCcw, Search, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  collapsedIdsForProfile,
+  mapStructureSignature,
+  type ViewProfile,
+} from './domain/viewState';
 import { buildFilterOptions, computeVisibleTree } from './domain/visibility';
-import type { FilterSelection } from './domain/types';
+import type { FilterSelection, NormalizedMap } from './domain/types';
 import { useCapabilityDocument } from './hooks/useCapabilityDocument';
 import { SAMPLE_YAML } from './sample';
 import {
   clearCollapsedIds,
   clearCollapsedGroupIds,
+  clearViewStateMetadata,
   clearYaml,
   loadCollapsedIds,
   loadCollapsedGroupIds,
+  loadViewProfile,
+  loadViewSignature,
   loadYaml,
   saveCollapsedIds,
   saveCollapsedGroupIds,
+  saveViewProfile,
+  saveViewSignature,
   saveYaml,
 } from './storage';
 import { DetailPanel } from './components/DetailPanel';
@@ -26,37 +36,79 @@ const YamlEditor = lazy(() =>
   import('./components/YamlEditor').then((module) => ({ default: module.YamlEditor })),
 );
 
+interface StoredViewState {
+  signature: string;
+  profile: ViewProfile;
+  collapsedIds: Set<string>;
+  collapsedGroupIds: Set<string>;
+}
+
+function initialViewState(map: NormalizedMap): StoredViewState {
+  const signature = mapStructureSignature(map);
+  const storedProfile = loadViewProfile();
+  if (loadViewSignature() === signature) {
+    return {
+      signature,
+      profile: storedProfile,
+      collapsedIds: loadCollapsedIds(),
+      collapsedGroupIds: loadCollapsedGroupIds(),
+    };
+  }
+  return {
+    signature,
+    profile: 'level-1',
+    collapsedIds: collapsedIdsForProfile(map, 'level-1'),
+    collapsedGroupIds: new Set(),
+  };
+}
+
 export default function App() {
   const [source, setSource] = useState(() => loadYaml(SAMPLE_YAML));
-  const [collapsedIds, setCollapsedIds] = useState(loadCollapsedIds);
-  const [collapsedGroupIds, setCollapsedGroupIds] = useState(loadCollapsedGroupIds);
+  const { result, lastValidMap, isPending, isStale } = useCapabilityDocument(source);
+  const [viewState, setViewState] = useState(() => initialViewState(lastValidMap));
   const [selectedId, setSelectedId] = useState<string>();
   const [focusId, setFocusId] = useState<string>();
+  const [fitVersion, setFitVersion] = useState(0);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<FilterSelection>({});
   const [tabletView, setTabletView] = useState<'editor' | 'map'>('map');
-  const { result, lastValidMap, isPending, isStale } = useCapabilityDocument(source);
   const diagnostics = result.diagnostics;
+  const currentMapSignature = useMemo(() => mapStructureSignature(lastValidMap), [lastValidMap]);
 
   useEffect(() => saveYaml(source), [source]);
+
+  useEffect(() => {
+    if (viewState.signature === currentMapSignature) return;
+    const timeout = window.setTimeout(() => setViewState(initialViewState(lastValidMap)), 0);
+    return () => window.clearTimeout(timeout);
+  }, [currentMapSignature, lastValidMap, viewState.signature]);
+
   const effectiveCollapsedIds = useMemo(
-    () => new Set([...collapsedIds].filter((id) => lastValidMap.capabilitiesById.has(id))),
-    [collapsedIds, lastValidMap],
+    () =>
+      new Set(
+        [...viewState.collapsedIds].filter((id) => lastValidMap.capabilitiesById.has(id)),
+      ),
+    [lastValidMap, viewState.collapsedIds],
   );
   const effectiveCollapsedGroupIds = useMemo(
-    () => new Set([...collapsedGroupIds].filter((id) => lastValidMap.groupsById.has(id))),
-    [collapsedGroupIds, lastValidMap],
+    () =>
+      new Set(
+        [...viewState.collapsedGroupIds].filter((id) => lastValidMap.groupsById.has(id)),
+      ),
+    [lastValidMap, viewState.collapsedGroupIds],
   );
   const effectiveSelectedId =
     selectedId && lastValidMap.capabilitiesById.has(selectedId) ? selectedId : undefined;
   const effectiveFocusId =
     focusId && lastValidMap.capabilitiesById.has(focusId) ? focusId : undefined;
 
-  useEffect(() => saveCollapsedIds(effectiveCollapsedIds), [effectiveCollapsedIds]);
-  useEffect(
-    () => saveCollapsedGroupIds(effectiveCollapsedGroupIds),
-    [effectiveCollapsedGroupIds],
-  );
+  useEffect(() => {
+    if (viewState.signature !== currentMapSignature) return;
+    saveCollapsedIds(effectiveCollapsedIds);
+    saveCollapsedGroupIds(effectiveCollapsedGroupIds);
+    saveViewProfile(viewState.profile);
+    saveViewSignature(currentMapSignature);
+  }, [currentMapSignature, effectiveCollapsedGroupIds, effectiveCollapsedIds, viewState]);
 
   const filterOptions = useMemo(() => buildFilterOptions(lastValidMap), [lastValidMap]);
   const visibleTree = useMemo(
@@ -85,22 +137,37 @@ export default function App() {
     : undefined;
 
   const toggleCollapsed = useCallback((id: string) => {
-    setCollapsedIds((current) => {
-      const next = new Set(current);
+    setViewState((current) => {
+      const next = new Set(current.collapsedIds);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return next;
+      return { ...current, profile: 'custom', collapsedIds: next };
     });
   }, []);
 
   const toggleCollapsedGroup = useCallback((id: string) => {
-    setCollapsedGroupIds((current) => {
-      const next = new Set(current);
+    setViewState((current) => {
+      const next = new Set(current.collapsedGroupIds);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return next;
+      return { ...current, profile: 'custom', collapsedGroupIds: next };
     });
   }, []);
+
+  const applyViewProfile = useCallback(
+    (profile: Exclude<ViewProfile, 'custom'>) => {
+      setViewState({
+        signature: currentMapSignature,
+        profile,
+        collapsedIds: collapsedIdsForProfile(
+          lastValidMap,
+          profile,
+        ),
+        collapsedGroupIds: new Set(),
+      });
+    },
+    [currentMapSignature, lastValidMap],
+  );
 
   const reset = () => {
     if (!window.confirm('YAML und gespeicherten Ansichtsstatus auf das Startbeispiel zurücksetzen?')) {
@@ -109,11 +176,18 @@ export default function App() {
     clearYaml();
     clearCollapsedIds();
     clearCollapsedGroupIds();
+    clearViewStateMetadata();
     setSource(SAMPLE_YAML);
-    setCollapsedIds(new Set());
-    setCollapsedGroupIds(new Set());
+    setViewState((current) => ({
+      ...current,
+      signature: '',
+      profile: 'level-1',
+      collapsedIds: new Set(),
+      collapsedGroupIds: new Set(),
+    }));
     setSelectedId(undefined);
     setFocusId(undefined);
+    setFitVersion((version) => version + 1);
     setSearch('');
     setFilters({});
   };
@@ -148,6 +222,23 @@ export default function App() {
                 <X size={14} />
               </button>
             )}
+          </label>
+          <label className="view-profile-control" title="Sichtbare Hierarchieebenen wählen">
+            <Layers3 size={16} />
+            <select
+              aria-label="Ansichtstiefe"
+              value={viewState.profile}
+              onChange={(event) => {
+                const profile = event.target.value as ViewProfile;
+                if (profile !== 'custom') applyViewProfile(profile);
+              }}
+            >
+              <option value="level-1">Ebene 1</option>
+              <option value="level-2">Ebene 2</option>
+              <option value="level-3">Ebene 3</option>
+              <option value="all">Vollständig</option>
+              {viewState.profile === 'custom' && <option value="custom">Individuell</option>}
+            </select>
           </label>
           <FilterMenu options={filterOptions} selection={filters} onChange={setFilters} />
           <button type="button" className="toolbar-button" onClick={reset}>
@@ -216,12 +307,15 @@ export default function App() {
           <div className="map-canvas">
             <Suspense fallback={<div className="panel-loading">Map wird geladen …</div>}>
               <CapabilityMap
-              roots={visibleTree}
-              collapsedIds={effectiveCollapsedIds}
+                roots={visibleTree}
+                mapKey={currentMapSignature}
+                focusId={effectiveFocusId}
+                fitVersion={fitVersion}
+                collapsedIds={effectiveCollapsedIds}
                 selectedId={effectiveSelectedId}
                 onSelect={setSelectedId}
-              onToggle={toggleCollapsed}
-              onToggleGroup={toggleCollapsedGroup}
+                onToggle={toggleCollapsed}
+                onToggleGroup={toggleCollapsedGroup}
                 onFocus={focusCapability}
               />
             </Suspense>
@@ -233,7 +327,6 @@ export default function App() {
             capability={selectedCapability}
             collapsed={effectiveCollapsedIds.has(selectedCapability.id)}
             onClose={() => setSelectedId(undefined)}
-            onFocus={focusCapability}
             onToggle={toggleCollapsed}
           />
         )}

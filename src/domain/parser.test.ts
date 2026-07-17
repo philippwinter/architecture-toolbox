@@ -73,7 +73,27 @@ map:
     expect(result.diagnostics[0]?.message).toContain('ersten Element');
   });
 
-  it('rejects icons outside the allowlist', () => {
+  it('accepts every installed Lucide icon and rejects unknown names', () => {
+    const valid = parseCapabilityDocument(`version: 1
+map:
+  id: icon-map
+  name: Icons
+  capabilities:
+    - id: rocket-capability
+      name: Rocket
+      visualization:
+        icon: rocket
+    - id: brain-capability
+      name: Brain
+      visualization:
+        icon: BrainCircuit
+`);
+
+    expect(valid.ok).toBe(true);
+    if (!valid.ok) return;
+    expect(valid.value.capabilitiesById.get('rocket-capability')?.icon).toBe('rocket');
+    expect(valid.value.capabilitiesById.get('brain-capability')?.icon).toBe('BrainCircuit');
+
     const result = parseCapabilityDocument(`version: 1
 map:
   id: icon-map
@@ -86,7 +106,7 @@ map:
 `);
 
     expect(result.ok).toBe(false);
-    expect(result.diagnostics[0]?.message).toContain('Unbekanntes Icon');
+    expect(result.diagnostics[0]?.message).toContain('Unbekanntes Lucide-Icon');
   });
 
   it('returns YAML syntax errors instead of throwing', () => {

@@ -1,59 +1,47 @@
-import {
-  Blocks,
-  Boxes,
-  BriefcaseBusiness,
-  Building2,
-  ChartNoAxesCombined,
-  CircleHelp,
-  Compass,
-  Factory,
-  Gauge,
-  Globe2,
-  Handshake,
-  Landmark,
-  Layers3,
-  Lightbulb,
-  Package,
-  Settings2,
-  ShieldCheck,
-  ShoppingCart,
-  Target,
-  Users,
-  Workflow,
-  type LucideIcon,
-} from 'lucide-react';
+import { CircleHelp, icons, type LucideIcon } from 'lucide-react';
 
-export const capabilityIcons = {
-  blocks: Blocks,
-  boxes: Boxes,
-  briefcase: BriefcaseBusiness,
-  building: Building2,
-  chart: ChartNoAxesCombined,
-  compass: Compass,
-  factory: Factory,
-  gauge: Gauge,
-  globe: Globe2,
-  handshake: Handshake,
-  landmark: Landmark,
-  layers: Layers3,
-  lightbulb: Lightbulb,
-  package: Package,
-  settings: Settings2,
-  shield: ShieldCheck,
-  shopping: ShoppingCart,
-  target: Target,
-  users: Users,
-  workflow: Workflow,
-} satisfies Record<string, LucideIcon>;
+function normalizeIconName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+}
 
-export type CapabilityIconName = keyof typeof capabilityIcons;
+const iconByNormalizedName = new Map<string, LucideIcon>(
+  Object.entries(icons).map(([name, icon]) => [normalizeIconName(name), icon]),
+);
 
-export const capabilityIconNames = Object.keys(capabilityIcons).sort();
+// Keep existing YAML documents visually stable while resolving every other
+// name directly from Lucide's generated icon catalog.
+const legacyAliases: Record<string, string> = {
+  blocks: 'Blocks',
+  boxes: 'Boxes',
+  briefcase: 'BriefcaseBusiness',
+  building: 'Building2',
+  chart: 'ChartNoAxesCombined',
+  compass: 'Compass',
+  factory: 'Factory',
+  gauge: 'Gauge',
+  globe: 'Globe2',
+  handshake: 'Handshake',
+  landmark: 'Landmark',
+  layers: 'Layers3',
+  lightbulb: 'Lightbulb',
+  package: 'Package',
+  settings: 'Settings2',
+  shield: 'ShieldCheck',
+  shopping: 'ShoppingCart',
+  target: 'Target',
+  users: 'Users',
+  workflow: 'Workflow',
+};
 
-export function hasCapabilityIcon(name: string): name is CapabilityIconName {
-  return name in capabilityIcons;
+for (const [alias, lucideName] of Object.entries(legacyAliases)) {
+  const icon = iconByNormalizedName.get(normalizeIconName(lucideName));
+  if (icon) iconByNormalizedName.set(normalizeIconName(alias), icon);
+}
+
+export function hasCapabilityIcon(name: string): boolean {
+  return iconByNormalizedName.has(normalizeIconName(name));
 }
 
 export function getCapabilityIcon(name?: string): LucideIcon {
-  return name && hasCapabilityIcon(name) ? capabilityIcons[name] : CircleHelp;
+  return (name && iconByNormalizedName.get(normalizeIconName(name))) || CircleHelp;
 }

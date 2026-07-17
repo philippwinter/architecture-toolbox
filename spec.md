@@ -160,7 +160,7 @@ map:
 | `responsibilities` | String-Liste | nein | Verantwortlichkeiten der Capability |
 | `tags` | String-Liste | nein | Such- und Filtermerkmale |
 | `visualization.color` | RGB-Hex-String `#RRGGBB` | nein | Eigene Hintergrundfarbe |
-| `visualization.icon` | String | nein | Name eines freigegebenen Icons |
+| `visualization.icon` | String | nein | Offizieller Name eines Icons aus dem installierten Lucide-Katalog |
 | `layout.direction` | `vertical` oder `horizontal` | nein | Standard: `vertical` |
 | `layout.weight` | positive Zahl | nein | Standard: `1`; relative Höhe oder Breite gemäß Layoutregel |
 | `layout.trackWeight` | positive Zahl | nein | Standard: `1`; relative Breite eines horizontalen Blocks |
@@ -295,7 +295,7 @@ Die konkrete Mindestgröße wird in der Implementierung als zentraler Design-Tok
 
 ### 8.3 Icons
 
-- Icons stammen aus Lucide und werden über ihren normalisierten Namen referenziert.
+- Alle Icons der installierten Lucide-Version stehen ohne manuell gepflegte Allowlist zur Verfügung. Sie können über ihren offiziellen PascalCase-Namen oder in Kebab-Case referenziert werden, zum Beispiel `BrainCircuit` oder `brain-circuit`.
 - Ein unbekannter Icon-Name ist ein Schema-/Semantikfehler.
 - Externe Bild- oder Icon-URLs sind im MVP unzulässig.
 
@@ -471,7 +471,7 @@ Tiefere Strukturen bleiben zulässig, sind aber außerhalb der garantierten Perf
 - YAML wird ausschließlich als Datenformat behandelt und niemals ausgeführt.
 - Freie Texte werden als Text gerendert, nicht als HTML.
 - Externe Ressourcen aus dem YAML werden nicht geladen.
-- Icon-Namen werden gegen eine Allowlist geprüft.
+- Icon-Namen werden ausschließlich gegen den automatisch von `lucide-react` bereitgestellten Katalog aufgelöst; externe Ressourcen werden dabei nicht geladen.
 - Verarbeitung und Speicherung erfolgen ausschließlich lokal im Browser.
 
 ### 14.4 Entwicklungsqualität

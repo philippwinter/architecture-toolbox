@@ -1,5 +1,5 @@
 import { isNode, LineCounter, parseDocument, type Document, type Node } from 'yaml';
-import { capabilityIconNames, hasCapabilityIcon } from './icons';
+import { hasCapabilityIcon } from './icons';
 import { capabilityMapSchema } from './schema';
 import type {
   CapabilityGroupInput,
@@ -232,7 +232,7 @@ function collectSemanticDiagnostics(
       if (icon && !hasCapabilityIcon(icon)) {
         addError(
           [...path, 'visualization', 'icon'],
-          `Unbekanntes Icon „${icon}“. Verfügbar: ${capabilityIconNames.join(', ')}.`,
+          `Unbekanntes Lucide-Icon „${icon}“. Verwende einen offiziellen Lucide-Namen, zum Beispiel „Rocket“ oder „brain-circuit“.`,
         );
       }
 
@@ -254,7 +254,7 @@ function collectSemanticDiagnostics(
       if (icon && !hasCapabilityIcon(icon)) {
         addError(
           [...path, 'visualization', 'icon'],
-          `Unbekanntes Icon „${icon}“. Verfügbar: ${capabilityIconNames.join(', ')}.`,
+          `Unbekanntes Lucide-Icon „${icon}“. Verwende einen offiziellen Lucide-Namen, zum Beispiel „Rocket“ oder „brain-circuit“.`,
         );
       }
       if (item.children) visitSiblings(item.children, [...path, 'children']);

@@ -14,6 +14,7 @@ import type {
   ExportScene,
   ExportSceneElement,
 } from './types';
+import { EXPORT_CORNER_RADII } from './style';
 
 const FRAME_PADDING = 32;
 const HEADER_HEIGHT = 92;
@@ -130,6 +131,7 @@ export function buildExportScene({
             id: node.item.group.id,
             name: node.item.group.name,
             rect,
+            cornerRadius: EXPORT_CORNER_RADII.group,
             backgroundColor: node.item.group.backgroundColor,
             direction: node.item.group.layout.direction,
             collapsed: node.item.collapsed,
@@ -147,6 +149,7 @@ export function buildExportScene({
               id: node.item.capability.id,
               name: node.item.capability.name,
               rect,
+              cornerRadius: EXPORT_CORNER_RADII.capability,
               color: node.item.capability.color,
               textColor: readableTextColor(node.item.capability.color),
               shape: node.item.capability.shape,

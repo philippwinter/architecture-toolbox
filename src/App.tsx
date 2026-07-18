@@ -1,4 +1,4 @@
-import { ChevronRight, Code2, Download, Layers3, Map, RotateCcw, Search, X } from 'lucide-react';
+import { ChevronRight, Code2, Layers3, Map, RotateCcw, Search, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   collapsedIdsForProfile,
@@ -28,7 +28,9 @@ import {
 import { DetailPanel } from './components/DetailPanel';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { FilterMenu } from './components/FilterMenu';
-import { createSvgExport, downloadSvg } from './export/exportSvg';
+import { ExportMenu, type ExportFormat } from './components/ExportMenu';
+import { downloadBlob, svgBlob } from './export/download';
+import { createSvgExport } from './export/exportSvg';
 
 const CapabilityMap = lazy(() =>
   import('./components/CapabilityMap').then((module) => ({ default: module.CapabilityMap })),
@@ -73,7 +75,10 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<FilterSelection>({});
   const [tabletView, setTabletView] = useState<'editor' | 'map'>('map');
-  const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'done' | 'error'>('idle');
+  const [exportStatus, setExportStatus] = useState<{
+    format?: ExportFormat;
+    state: 'idle' | 'exporting' | 'done' | 'error';
+  }>({ state: 'idle' });
   const diagnostics = result.diagnostics;
   const currentMapSignature = useMemo(() => mapStructureSignature(lastValidMap), [lastValidMap]);
 
@@ -138,19 +143,19 @@ export default function App() {
     ? lastValidMap.capabilitiesById.get(effectiveFocusId)
     : undefined;
 
-  const exportAsSvg = useCallback(async () => {
+  const exportMap = useCallback(async (format: ExportFormat) => {
     if (
       isStale &&
       !window.confirm(
-        'Die YAML-Datei ist nicht gültig. Die letzte gültige Vorschau als SVG exportieren?',
+        `Die YAML-Datei ist nicht gültig. Die letzte gültige Vorschau als ${format.toUpperCase()} exportieren?`,
       )
     ) {
       return;
     }
-    setExportStatus('exporting');
+    setExportStatus({ state: 'exporting', format });
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
     try {
-      const { filename, svg } = createSvgExport({
+      const options = {
         map: lastValidMap,
         roots: visibleTree,
         profile: viewState.profile,
@@ -158,12 +163,27 @@ export default function App() {
         filterOptions,
         search,
         focusPath: focusedCapability?.pathNames,
-      });
-      downloadSvg(filename, svg);
-      setExportStatus('done');
+      };
+      if (format === 'svg') {
+        const { filename, svg } = createSvgExport(options);
+        downloadBlob(filename, svgBlob(svg));
+      } else if (format === 'png') {
+        const { createPngExport } = await import('./export/png');
+        const { blob, filename } = await createPngExport(options);
+        downloadBlob(filename, blob);
+      } else if (format === 'pdf') {
+        const { createPdfExport } = await import('./export/pdf');
+        const { blob, filename } = await createPdfExport(options);
+        downloadBlob(filename, blob);
+      } else {
+        const { createPptxExport } = await import('./export/pptx');
+        const { blob, filename } = await createPptxExport(options);
+        downloadBlob(filename, blob);
+      }
+      setExportStatus({ state: 'done', format });
     } catch (error) {
-      console.error('SVG-Export fehlgeschlagen', error);
-      setExportStatus('error');
+      console.error(`${format.toUpperCase()}-Export fehlgeschlagen`, error);
+      setExportStatus({ state: 'error', format });
     }
   }, [
     filterOptions,
@@ -281,15 +301,11 @@ export default function App() {
             </select>
           </label>
           <FilterMenu options={filterOptions} selection={filters} onChange={setFilters} />
-          <button
-            type="button"
-            className="toolbar-button"
-            disabled={exportStatus === 'exporting' || visibleTree.length === 0}
-            onClick={() => void exportAsSvg()}
-            aria-label="SVG exportieren"
-          >
-            <Download size={16} /> {exportStatus === 'exporting' ? 'Export …' : 'SVG'}
-          </button>
+          <ExportMenu
+            disabled={visibleTree.length === 0}
+            busyFormat={exportStatus.state === 'exporting' ? exportStatus.format : undefined}
+            onExport={(format) => void exportMap(format)}
+          />
           <button type="button" className="toolbar-button" onClick={reset}>
             <RotateCcw size={16} /> Beispiel
           </button>
@@ -335,9 +351,13 @@ export default function App() {
             <div className="map-meta">
               <span>{lastValidMap.capabilitiesById.size} Capabilities</span>
               {isStale && <span className="stale-badge">Nicht aktuell</span>}
-              {exportStatus === 'done' && <span className="export-feedback">SVG erstellt</span>}
-              {exportStatus === 'error' && (
-                <span className="export-feedback error" role="alert">Export fehlgeschlagen</span>
+              {exportStatus.state === 'done' && exportStatus.format && (
+                <span className="export-feedback">{exportStatus.format.toUpperCase()} erstellt</span>
+              )}
+              {exportStatus.state === 'error' && exportStatus.format && (
+                <span className="export-feedback error" role="alert">
+                  {exportStatus.format.toUpperCase()}-Export fehlgeschlagen
+                </span>
               )}
             </div>
           </div>

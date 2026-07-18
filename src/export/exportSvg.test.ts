@@ -50,6 +50,8 @@ describe('SVG export', () => {
     expect(nestedCapability?.rect.x).toBeGreaterThan(parentGroup?.rect.x ?? 0);
     expect(nestedCapability?.rect.y).toBeGreaterThan(parentGroup?.rect.y ?? 0);
     expect(nestedCapability?.iconNode.length).toBeGreaterThan(0);
+    expect(nestedCapability?.cornerRadius).toBe(9);
+    expect(parentGroup?.cornerRadius).toBe(10);
   });
 
   it('renders a self-contained, valid SVG with native text and vector icons', () => {
@@ -67,6 +69,8 @@ describe('SVG export', () => {
     expect(document.querySelector('[data-id="corporate-development"] path')).not.toBeNull();
     expect(document.querySelector('text')?.textContent).toContain('Enterprise Capability Map');
     expect(document.querySelector('[aria-label="Legende"]')).not.toBeNull();
+    expect(document.querySelector('[data-id="strategy-governance-group"] rect')?.getAttribute('rx')).toBe('10');
+    expect(document.querySelector('[data-id="strategy"] rect')?.getAttribute('rx')).toBe('9');
   });
 
   it('uses an explicit portable baseline offset for capability text lines', () => {

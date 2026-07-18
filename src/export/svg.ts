@@ -6,6 +6,7 @@ import type {
   ExportRect,
   ExportScene,
 } from './types';
+import { EXPORT_CORNER_RADII, effectiveCornerRadius, roundedDividerInset } from './style';
 
 const FONT_FAMILY = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
 
@@ -145,9 +146,10 @@ function renderCapability(element: ExportCapabilityElement, offsetX: number, off
     ? { ...rect, width: rect.width + 8 }
     : rect;
   const opacity = element.contextOnly ? 0.48 : 1;
+  const cornerRadius = effectiveCornerRadius(element.cornerRadius, rect);
   const surface = renderedChevron
     ? `<polygon points="${chevronPoints(displayRect)}" fill="#52606d" fill-opacity=".56"/><polygon points="${chevronPoints(displayRect, 1)}" fill="${element.color}"/>`
-    : `<rect x="${number(rect.x)}" y="${number(rect.y)}" width="${number(rect.width)}" height="${number(rect.height)}" rx="9" fill="${element.color}" stroke="#141e28" stroke-opacity=".21"/><path d="M ${number(rect.x + 9)} ${number(rect.y + 1)} H ${number(rect.x + rect.width - 9)}" stroke="#ffffff" stroke-opacity=".14"/>`;
+    : `<rect x="${number(rect.x)}" y="${number(rect.y)}" width="${number(rect.width)}" height="${number(rect.height)}" rx="${number(cornerRadius)}" fill="${element.color}" stroke="#141e28" stroke-opacity=".21"/><path d="M ${number(rect.x + cornerRadius)} ${number(rect.y + 1)} H ${number(rect.x + rect.width - cornerRadius)}" stroke="#ffffff" stroke-opacity=".14"/>`;
   const headerHeight = element.compact ? rect.height : Math.min(47, rect.height);
   const leftPadding = renderedChevron ? 25 : element.compact ? 7 : 9;
   const rightPadding = renderedChevron ? 25 : 9;
@@ -185,6 +187,7 @@ function renderGroup(element: ExportGroupElement, offsetX: number, offsetY: numb
   };
   const fill = mixColors(element.backgroundColor, '#ffffff', 0.78);
   const stroke = mixColors(element.backgroundColor, '#75808d', 0.72);
+  const cornerRadius = effectiveCornerRadius(element.cornerRadius, rect);
   const verticalLabel =
     (element.direction === 'horizontal' && (!element.collapsed || element.collapsedTrackFill)) ||
     (element.direction === 'vertical' && element.collapsed);
@@ -193,11 +196,14 @@ function renderGroup(element: ExportGroupElement, offsetX: number, offsetY: numb
     : element.direction === 'vertical'
       ? { x: rect.x, y: rect.y, width: rect.width, height: element.labelSize }
       : { x: rect.x, y: rect.y, width: element.labelSize, height: rect.height };
+  const dividerInset = element.direction === 'vertical'
+    ? roundedDividerInset(cornerRadius, Math.min(element.labelSize, rect.height - element.labelSize))
+    : roundedDividerInset(cornerRadius, Math.min(element.labelSize, rect.width - element.labelSize));
   const divider = element.collapsed
     ? ''
     : element.direction === 'vertical'
-      ? `<line x1="${number(rect.x)}" y1="${number(rect.y + element.labelSize)}" x2="${number(rect.x + rect.width)}" y2="${number(rect.y + element.labelSize)}" stroke="#465260" stroke-opacity=".13"/>`
-      : `<line x1="${number(rect.x + element.labelSize)}" y1="${number(rect.y)}" x2="${number(rect.x + element.labelSize)}" y2="${number(rect.y + rect.height)}" stroke="#465260" stroke-opacity=".13"/>`;
+      ? `<line x1="${number(rect.x + dividerInset)}" y1="${number(rect.y + element.labelSize)}" x2="${number(rect.x + rect.width - dividerInset)}" y2="${number(rect.y + element.labelSize)}" stroke="#465260" stroke-opacity=".13"/>`
+      : `<line x1="${number(rect.x + element.labelSize)}" y1="${number(rect.y + dividerInset)}" x2="${number(rect.x + element.labelSize)}" y2="${number(rect.y + rect.height - dividerInset)}" stroke="#465260" stroke-opacity=".13"/>`;
   const label = verticalLabel
     ? renderVerticalLabel(element.name, labelRect, '#4c5867', element.collapsed ? 10 : 11)
     : textLines(
@@ -208,21 +214,21 @@ function renderGroup(element: ExportGroupElement, offsetX: number, offsetY: numb
         '#4c5867',
       );
 
-  return `<g data-kind="group" data-id="${escapeXml(element.id)}"><rect x="${number(rect.x)}" y="${number(rect.y)}" width="${number(rect.width)}" height="${number(rect.height)}" rx="10" fill="${fill}" stroke="${stroke}"${element.autoCollapsed ? ' stroke-dasharray="5 4"' : ''}/>${divider}${label}</g>`;
+  return `<g data-kind="group" data-id="${escapeXml(element.id)}"><rect x="${number(rect.x)}" y="${number(rect.y)}" width="${number(rect.width)}" height="${number(rect.height)}" rx="${number(cornerRadius)}" fill="${fill}" stroke="${stroke}"${element.autoCollapsed ? ' stroke-dasharray="5 4"' : ''}/>${divider}${label}</g>`;
 }
 
 function renderLegendSymbol(entry: ExportLegendEntry, x: number, y: number): string {
   switch (entry.kind) {
     case 'group':
-      return `<rect x="${x}" y="${y - 7}" width="18" height="14" rx="3" fill="#e6ebef" stroke="#89939f"/>`;
+      return `<rect x="${x}" y="${y - 7}" width="18" height="14" rx="${EXPORT_CORNER_RADII.legend}" fill="#e6ebef" stroke="#89939f"/>`;
     case 'value-stream':
       return `<polygon points="${x},${y - 7} ${x + 14},${y - 7} ${x + 20},${y} ${x + 14},${y + 7} ${x},${y + 7} ${x + 5},${y}" fill="#7ba9a0" stroke="#52606d" stroke-opacity=".56"/>`;
     case 'hidden-descendants':
-      return `<rect x="${x}" y="${y - 7}" width="21" height="14" rx="7" fill="#dceee9"/><text x="${x + 10.5}" y="${y}" fill="#176b5b" font-family="${FONT_FAMILY}" font-size="8" font-weight="700" text-anchor="middle" dominant-baseline="middle">+3</text>`;
+      return `<rect x="${x}" y="${y - 7}" width="21" height="14" rx="${EXPORT_CORNER_RADII.hiddenBadge}" fill="#dceee9"/><text x="${x + 10.5}" y="${y}" fill="#176b5b" font-family="${FONT_FAMILY}" font-size="8" font-weight="700" text-anchor="middle" dominant-baseline="middle">+3</text>`;
     case 'context':
-      return `<rect x="${x}" y="${y - 7}" width="18" height="14" rx="3" fill="#7ba9a0" opacity=".48"/>`;
+      return `<rect x="${x}" y="${y - 7}" width="18" height="14" rx="${EXPORT_CORNER_RADII.legend}" fill="#7ba9a0" opacity=".48"/>`;
     default:
-      return `<rect x="${x}" y="${y - 7}" width="18" height="14" rx="3" fill="#7ba9a0" stroke="#141e28" stroke-opacity=".21"/>`;
+      return `<rect x="${x}" y="${y - 7}" width="18" height="14" rx="${EXPORT_CORNER_RADII.legend}" fill="#7ba9a0" stroke="#141e28" stroke-opacity=".21"/>`;
   }
 }
 

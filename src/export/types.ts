@@ -14,6 +14,7 @@ export interface ExportCapabilityElement {
   id: string;
   name: string;
   rect: ExportRect;
+  cornerRadius: number;
   color: string;
   textColor: string;
   shape: CapabilityShape;
@@ -32,6 +33,7 @@ export interface ExportGroupElement {
   id: string;
   name: string;
   rect: ExportRect;
+  cornerRadius: number;
   backgroundColor: string;
   direction: LayoutDirection;
   collapsed: boolean;

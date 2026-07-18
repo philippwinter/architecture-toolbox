@@ -30,12 +30,3 @@ export function createSvgExport(options: BuildExportSceneOptions): {
     svg: renderSvg(scene),
   };
 }
-
-export function downloadSvg(filename: string, svg: string): void {
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}

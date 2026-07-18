@@ -1,5 +1,30 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Download, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+
+async function downloadExport(page: Page, format: 'PDF' | 'PNG' | 'PPTX' | 'SVG'): Promise<Download> {
+  await page.getByLabel('Exportieren', { exact: true }).click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('menuitem', { name: `Als ${format} exportieren` }).click();
+  return downloadPromise;
+}
+
+function nativeShapeByName(slideXml: string, objectName: string): string {
+  const shape = (slideXml.match(/<p:sp>[\s\S]*?<\/p:sp>/g) ?? [])
+    .find((candidate) => candidate.includes(`name="${objectName}"`));
+  if (!shape) throw new Error(`PowerPoint-Form fehlt: ${objectName}`);
+  return shape;
+}
+
+function roundedShapeGeometry(shapeXml: string): { adjustment: number; radiusEmu: number } {
+  const extent = shapeXml.match(/<a:ext cx="(\d+)" cy="(\d+)"/);
+  const adjustment = shapeXml.match(/<a:gd name="adj" fmla="val (\d+)"/);
+  if (!extent || !adjustment) throw new Error('Explizite Rundungsgeometrie fehlt');
+  const shortSide = Math.min(Number(extent[1]), Number(extent[2]));
+  return {
+    adjustment: Number(adjustment[1]),
+    radiusEmu: Number(adjustment[1]) * shortSide / 100_000,
+  };
+}
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -167,9 +192,7 @@ test('keeps the last valid preview when YAML becomes invalid', async ({ page }) 
 });
 
 test('downloads the current capability map as a self-contained SVG', async ({ page }) => {
-  const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'SVG exportieren' }).click();
-  const download = await downloadPromise;
+  const download = await downloadExport(page, 'SVG');
   const downloadPath = await download.path();
   const svg = await readFile(downloadPath, 'utf8');
 
@@ -186,9 +209,7 @@ test('downloads the current capability map as a self-contained SVG', async ({ pa
 
 test('keeps SVG capability icons and text vertically centered across renderers', async ({ page }) => {
   await page.getByRole('combobox', { name: 'Ansichtstiefe' }).selectOption('level-2');
-  const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'SVG exportieren' }).click();
-  const download = await downloadPromise;
+  const download = await downloadExport(page, 'SVG');
   const svg = await readFile(await download.path(), 'utf8');
   await page.setContent(svg);
 
@@ -212,6 +233,119 @@ test('keeps SVG capability icons and text vertically centered across renderers',
   expect(Math.abs(alignment.iconDelta)).toBeLessThan(1);
   expect(Math.abs(alignment.textDelta)).toBeLessThan(1);
   expect(Math.abs(alignment.pairDelta)).toBeLessThan(1);
+});
+
+test('rasterizes the canonical SVG into a non-empty white-background PNG at 2x', async ({ page }) => {
+  const pngDownload = await downloadExport(page, 'PNG');
+  const png = await readFile(await pngDownload.path());
+  const svgDownload = await downloadExport(page, 'SVG');
+  const svg = await readFile(await svgDownload.path(), 'utf8');
+  const viewBox = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+  if (!viewBox) throw new Error('SVG viewBox fehlt');
+
+  expect(pngDownload.suggestedFilename()).toMatch(
+    /^enterprise-capabilities-level-1-\d{8}-\d{6}\.png$/,
+  );
+  expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+  expect(png.readUInt32BE(16)).toBe(Math.round(Number(viewBox[1]) * 2));
+  expect(png.readUInt32BE(20)).toBe(Math.round(Number(viewBox[2]) * 2));
+
+  const pixels = await page.evaluate(async (dataUrl) => {
+    const image = new Image();
+    image.src = dataUrl;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas fehlt');
+    context.drawImage(image, 0, 0);
+    const corner = [...context.getImageData(0, 0, 1, 1).data];
+    let nonWhite = 0;
+    for (let y = 0; y < image.height; y += Math.max(1, Math.floor(image.height / 20))) {
+      for (let x = 0; x < image.width; x += Math.max(1, Math.floor(image.width / 20))) {
+        const [red = 255, green = 255, blue = 255, alpha = 0] = context.getImageData(x, y, 1, 1).data;
+        if (alpha > 0 && (red < 250 || green < 250 || blue < 250)) nonWhite += 1;
+      }
+    }
+    return { corner, nonWhite };
+  }, `data:image/png;base64,${png.toString('base64')}`);
+
+  expect(pixels.corner).toEqual([255, 255, 255, 255]);
+  expect(pixels.nonWhite).toBeGreaterThan(0);
+  await expect(page.getByText('SVG erstellt')).toBeVisible();
+});
+
+test('exports a single-page vector PDF in A3 landscape with metadata and text', async ({ page }) => {
+  const download = await downloadExport(page, 'PDF');
+  const pdf = await readFile(await download.path());
+  const { getDocument, OPS } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const document = await getDocument({ data: new Uint8Array(pdf) }).promise;
+  const firstPage = await document.getPage(1);
+  const viewport = firstPage.getViewport({ scale: 1 });
+  const text = await firstPage.getTextContent();
+  const operators = await firstPage.getOperatorList();
+  const metadata = await document.getMetadata();
+  const documentInfo = metadata.info as Record<string, unknown>;
+  const extractedText = text.items.flatMap((item) => ('str' in item ? [item.str] : [])).join(' ');
+
+  expect(download.suggestedFilename()).toMatch(
+    /^enterprise-capabilities-level-1-\d{8}-\d{6}\.pdf$/,
+  );
+  expect(pdf.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+  expect(document.numPages).toBe(1);
+  expect(viewport.width).toBeCloseTo(1190.55, 0);
+  expect(viewport.height).toBeCloseTo(841.89, 0);
+  expect(extractedText).toContain('Enterprise Capability Map');
+  expect(documentInfo['Title']).toBe('Enterprise Capability Map');
+  expect(documentInfo['Creator']).toBe('Capability Map Studio');
+  expect(operators.fnArray.filter((operator) => operator === OPS.constructPath).length).toBeGreaterThan(100);
+  expect(operators.fnArray).not.toContain(OPS.paintImageXObject);
+  await expect(page.getByText('PDF erstellt')).toBeVisible();
+});
+
+test('exports one editable 16:9 PowerPoint slide with native shapes and text', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.getByRole('combobox', { name: 'Ansichtstiefe' }).selectOption('level-2');
+  const download = await downloadExport(page, 'PPTX');
+  const pptx = await readFile(await download.path());
+  const { default: JSZip } = await import('jszip');
+  const archive = await JSZip.loadAsync(pptx);
+  const presentation = await archive.file('ppt/presentation.xml')?.async('text');
+  const slide = await archive.file('ppt/slides/slide1.xml')?.async('text');
+  const media = Object.keys(archive.files).filter((path) => path.startsWith('ppt/media/'));
+
+  expect(download.suggestedFilename()).toMatch(
+    /^enterprise-capabilities-level-2-\d{8}-\d{6}\.pptx$/,
+  );
+  expect(pptx.subarray(0, 2).toString('ascii')).toBe('PK');
+  expect(Object.keys(archive.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path))).toHaveLength(1);
+  expect(presentation).toContain('cx="12191695" cy="6858000"');
+  expect(slide).toContain('Enterprise Capability Map');
+  expect(slide).toContain('Strategy');
+  expect(slide?.match(/<p:sp>/g)?.length ?? 0).toBeGreaterThan(100);
+  expect(slide?.match(/prst="roundRect"/g)?.length ?? 0).toBeGreaterThan(20);
+  expect(slide).toContain('prst="chevron"');
+  expect(slide).toContain('strategy capability name');
+  expect(media.some((path) => path.endsWith('.svg'))).toBe(true);
+
+  if (!slide) throw new Error('PowerPoint-Folie fehlt');
+  const rootGroup = roundedShapeGeometry(
+    nativeShapeByName(slide, 'strategy-governance-group group surface'),
+  );
+  const nestedGroup = roundedShapeGeometry(
+    nativeShapeByName(slide, 'enterprise-direction-group group surface'),
+  );
+  const capability = roundedShapeGeometry(
+    nativeShapeByName(slide, 'strategy capability surface'),
+  );
+  const legendGroup = roundedShapeGeometry(nativeShapeByName(slide, 'Legend group'));
+
+  expect(rootGroup.adjustment).not.toBe(nestedGroup.adjustment);
+  expect(rootGroup.radiusEmu).toBeCloseTo(nestedGroup.radiusEmu, -1);
+  expect(capability.radiusEmu / rootGroup.radiusEmu).toBeCloseTo(0.9, 2);
+  expect(legendGroup.radiusEmu / rootGroup.radiusEmu).toBeCloseTo(0.3, 2);
+  await expect(page.getByText('PPTX erstellt')).toBeVisible();
 });
 
 test('switches between map and editor at tablet width', async ({ page }) => {

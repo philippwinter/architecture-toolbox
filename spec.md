@@ -1,6 +1,6 @@
 # Capability Map Renderer – Spezifikation
 
-Status: Erweiterungsspezifikation v0.5 (umsetzungsreif)
+Status: Erweiterungsspezifikation v0.7 (umsetzungsreif)
 Stand: 18. Juli 2026
 Ziel: Umsetzungsreife Spezifikation für die schrittweise Export-Erweiterung auf Basis des bestehenden Renderers
 
@@ -785,6 +785,7 @@ Vor dem ersten Format wird eine formatneutrale, immutable Export-Repräsentation
 - Namen, Zeilenbegrenzung, Schriftgröße, Ausrichtung und Schriftschnitt;
 - Lucide-Icons als formatsunabhängige Vektorpfade;
 - Box-, Gruppen- und Chevron-Geometrien sowie sichtbare Zustandsindikatoren.
+- einen expliziten, absoluten Eckenradius je Flächenelement in logischen Export-Einheiten; der Radius darf nicht erst formatspezifisch aus Breite oder Höhe der Form abgeleitet werden.
 
 Das Szenenmodell darf keine DOM-Elemente, React-Komponenten, CSS-Klassen oder React-Flow-Objekte enthalten. Gemeinsame Export-Tokens müssen aus denselben Designwerten wie die Bildschirmdarstellung abgeleitet werden. Die Reihenfolge im Szenenmodell definiert verbindlich die Zeichen- und Überlagerungsreihenfolge aller Formate.
 
@@ -855,7 +856,58 @@ PPTX ist wegen der erforderlichen Editierbarkeit und der Abbildung der verschach
 - Der technische Spike muss insbesondere die robuste Erzeugung, gemeinsame Verschiebbarkeit und spätere Auflösbarkeit der Capability-Objekte bestätigen. Ist dies mit der gewählten Bibliothek nicht zuverlässig möglich, wird vor der PPTX-Implementierung erneut entschieden und nicht stillschweigend auf eine einzige SVG-Grafik ausgewichen.
 - Für PPTX sind OOXML-Struktur, Öffnen ohne Reparaturmeldung, Folienzahl und -größe, vorhandene editierbare Texte und Formen, Elementreihenfolge sowie visuelle Regressionen gegen die Bildschirmdarstellung zu testen.
 
+#### 17.7.1 Eckenradien und native PowerPoint-Geometrie
+
+Die PowerPoint-Ausgabe muss die festen Eckenradien des gemeinsamen Designsystems abbilden. Das unveränderte PowerPoint-Preset `roundRect` ist hierfür nicht ausreichend: Dessen Standardrundung wird relativ zur kürzeren Kante einer Form bestimmt und lässt dadurch insbesondere breite, flache Gruppen deutlich stärker gerundet erscheinen als in Web- und SVG-Darstellung.
+
+Für alle gerundeten Flächen gelten deshalb folgende Regeln:
+
+- Der gemeinsame Export-Style definiert den Radius in logischen Export-Einheiten. Gruppencontainer verwenden `10`, Capability-Boxen `9`. Pillenförmige Indikatoren wie Nachfahrenzähler bleiben davon getrennte, ausdrücklich kapselartige Komponenten.
+- Der wirksame Radius ist `min(styleRadius, width / 2, height / 2)`. Damit bleibt der Radius bei normal großen Flächen absolut konstant und wird nur bei tatsächlich zu kleinen beziehungsweise eingeklappten Flächen geometrisch begrenzt.
+- Die einheitliche PPTX-Gesamtskalierung wird nach dieser Begrenzung angewendet. Der physische Folienradius ergibt sich somit aus `effectiveRadius × placementScale`; er wird nicht je Form erneut relativ zu deren Seitenverhältnis bestimmt.
+- Gruppen der ersten und zweiten Gruppenebene verwenden denselben Gruppenradius. Unterschiedliche Breiten, Höhen, Layout-Richtungen oder Verschachtelungstiefen dürfen die Rundungsstärke nicht verändern.
+- Eingeklappte Gruppen behalten denselben Grundradius und verwenden lediglich die geometrische Begrenzung. Ein kapselartiges Ergebnis ist nur dann zulässig, wenn die kürzere Kante tatsächlich höchstens dem doppelten Designradius entspricht.
+- Rechteckige Capability-Flächen und Gruppencontainer bestehen jeweils aus genau einer nativen editierbaren PowerPoint-Fläche mit gemeinsamem Füll- und Rahmenpfad. Übereinandergelegte Füll- und Rahmenformen mit voneinander abweichenden Radien sind unzulässig.
+- Chevron-Flächen besitzen keinen Eckenradius. Legendenformen verwenden die Geometrie des jeweils erklärten Konzepts in vereinfachter Größe; ein Gruppen-Legendensymbol muss daher ebenfalls einen explizit begrenzten Radius erhalten.
+- Trennlinien für Gruppennamen und Capability-Header müssen vollständig innerhalb der zugehörigen Form liegen. Schneidet ihre Position den Bereich einer gerundeten Ecke, werden ihre Endpunkte bis hinter den Eckenbereich eingerückt; der Außenrahmen selbst bleibt unverändert.
+
+Die PPTX-Adaption verwendet folgende technische Priorität:
+
+1. Bevorzugt wird ein natives PowerPoint-`roundRect` mit explizit gesetztem OOXML-Anpassungswert. Für das DrawingML-Preset wird der Wert aus `effectiveRadius / min(width, height)` berechnet, auf den zulässigen Bereich begrenzt und für jede Form einzeln geschrieben.
+2. Unterstützt die eingesetzte Bibliothek diesen Anpassungswert nicht über ihre öffentliche API, darf das erzeugte OOXML vor dem Download deterministisch nachbearbeitet werden. Die Form muss dabei ein einzelnes natives `roundRect` bleiben und weiterhin ohne Reparaturmeldung editierbar sein.
+3. Nur falls die OOXML-Anpassung nachweislich nicht robust ist, darf eine einzelne native editierbare Freiform mit vier geraden Kanten und vier Viertelkreisbögen verwendet werden.
+
+Nicht zulässig sind das unveränderte Standard-`roundRect`, ein rasterisiertes Gruppenbild, ein eingebettetes SVG als Gruppenfläche oder ein rein visuelles Kaschieren durch zusätzliche Eckformen.
+
+Die Rundungsfidelität wird mit einer eigenen Referenzmatrix geprüft. Diese enthält mindestens eine sehr breite und flache Root-Gruppe, eine hohe schmale Gruppe, zwei verschachtelte Gruppen, eine eingeklappte Gruppe, eine kompakte Capability und eine Form nahe der Radiusbegrenzung. Die Abnahme umfasst:
+
+- einen Strukturtest auf den je Form berechneten OOXML-Anpassungswert beziehungsweise die freigegebene native Freiformgeometrie;
+- eine visuelle Regression der vier Ecken gegen das kanonische SVG bei identischer normalisierter Ausgabegröße;
+- die Prüfung, dass Gruppen gleicher Styleklasse trotz unterschiedlicher Seitenverhältnisse denselben absoluten Radius besitzen;
+- das Öffnen und erneute Speichern in PowerPoint ohne Reparaturmeldung sowie eine Renderprüfung mit dem automatisierten Office-Renderer;
+- die Bestätigung, dass Füllung, Rahmen, Name und Trennlinie weiterhin separat beziehungsweise wie vereinbart editierbar und nicht beschnitten sind.
+
+Als visuelle Toleranz gilt nach Normalisierung höchstens eine Abweichung von `1` logischen Export-Einheit beim Radius und höchstens `2` Rasterpixel in den Eckenvergleichsbildern. Ein deutlich pillenförmiger Gruppencontainer bei ausreichender Höhe ist unabhängig von der numerischen Toleranz ein Abnahmefehler.
+
 Eine Übersichtsfolie mit automatisch erzeugten Detailfolien, konfigurierbare Folienformate, eine automatische Mehrfolienaufteilung, editierbare Icon-Freiformpfade und rekursiv verschachtelte PowerPoint-Gruppen sind mögliche spätere Ausbaustufen.
+
+#### 17.7.2 Optionale Ausbaustufe – native Lucide-Geometrien
+
+In der ersten PPTX-Version bleiben Lucide-Icons wie vereinbart als eingebettete SVG-Bilder erhalten. PowerPoint behandelt diese als importierte Bilder und fordert beim späteren Gruppieren beziehungsweise Zerlegen gegebenenfalls zur manuellen Konvertierung in ein Microsoft-Office-Zeichenobjekt auf. Diese Einschränkung wird für die erste Version bewusst akzeptiert; der Export darf weder eine installierte PowerPoint-Instanz noch Betriebssystemautomation voraussetzen.
+
+Bei entsprechendem Bedarf kann der PPTX-Adapter später native Office-Zeichenobjekte statt SVG-Bilder erzeugen. Ziel dieser optionalen Ausbaustufe ist, dass ein Icon ohne vorgelagerten Konvertierungsdialog unmittelbar mit Capability-Fläche, Text oder weiteren Objekten gruppiert und in PowerPoint bearbeitet werden kann.
+
+Für diese Ausbaustufe gelten folgende Leitplanken:
+
+- Die Änderung betrifft ausschließlich PPTX. SVG, PNG und PDF verwenden weiterhin die vorhandenen Lucide-Vektorpfade beziehungsweise das kanonische SVG.
+- Ein Icon wird bevorzugt als einzelnes natives `p:sp` mit DrawingML-`a:custGeom` ausgegeben. Benötigt seine Geometrie mehrere eigenständige Office-Formen, werden diese als ein gemeinsames `p:grpSp` gekapselt.
+- Die Konvertierung erhält die Lucide-`24 × 24`-Koordinaten, Skalierung, Strichstärke, Farbe, Transparenz sowie runde Linienenden und Linienverbindungen.
+- Unterstützt werden müssen alle im installierten Lucide-Katalog vorkommenden Grundelemente und SVG-Pfadbefehle. Eine nur auf die Referenzmap oder eine Whitelist zugeschnittene Teilimplementierung ist unzulässig.
+- Das Ergebnis darf für Lucide-Icons keine `p:pic`-, `svgBlip`- oder rasterisierte Ersatzdarstellung mehr benötigen. Andere zukünftig erlaubte Bildinhalte bleiben davon unberührt.
+- Die Konvertierung erfolgt vollständig im Browser und muss im Standalone-Build ohne externe Dienste, PowerPoint-Installation oder plattformspezifische Office-Automation funktionieren.
+- Ist eine katalogweite visuelle und strukturelle Konvertierung nicht robust erreichbar, bleibt der bestehende SVG-Exportpfad aktiv; es erfolgt kein stillschweigender Wechsel auf unvollständige native Geometrien.
+
+Vor einer Freigabe sind mindestens ein katalogweiter Konvertierungs-Smoke-Test, Strukturtests auf native DrawingML-Formen, visuelle Regressionen für einfache, kreisförmige, mehrteilige und komplexe Icons sowie ein manueller Gruppierungs- und Bearbeitungstest in PowerPoint erforderlich. Die Präsentation muss weiterhin ohne Reparaturmeldung geöffnet werden können und darf durch die nativen Icons keine unvertretbare Zunahme von Dateigröße oder Erzeugungsdauer erfahren.
 
 ### 17.8 Implementierungsreihenfolge und Freigabegates
 
@@ -883,6 +935,7 @@ Die gesamte Export-Erweiterung gilt als abgeschlossen, wenn:
 8. PPTX ohne Reparaturmeldung geöffnet werden kann und die vereinbarten Texte und Formen editierbar sind;
 9. automatisierte Struktur-, Download- und visuelle Regressionstests für alle vier Formate erfolgreich sind;
 10. jede Formatphase separat fachlich abgenommen wurde, bevor das nachfolgende Format öffentlich freigeschaltet wird.
+11. PPTX-Gruppen und Capability-Boxen die absoluten Eckenradien des gemeinsamen Szenenmodells unabhängig von ihrem Seitenverhältnis innerhalb der in Abschnitt 17.7.1 festgelegten Toleranzen wiedergeben.
 
 ## 18. Ausbaustufen
 
@@ -892,13 +945,14 @@ Priorisierte Weiterentwicklung nach dem MVP:
 2. PNG-Export durch Rasterisierung des SVGs;
 3. PDF-Export;
 4. PPTX-Export als letzte Exportphase;
-5. Dateiimport und -download, Laden beim Build sowie Laden über URL;
-6. Datenmengen deutlich oberhalb der verbindlichen 500-Capability-Referenzmap mit weitergehendem Profiling, Virtualisierung oder alternativen Renderstrategien;
-7. visuelle Bearbeitung mit kontrollierter Rückschreibung ins YAML;
-8. Backend, Versionierung und Zusammenarbeit;
-9. mehrere UI-Sprachen;
-10. formale Barrierefreiheit und optimierte Smartphone-Nutzung;
-11. alternative Darstellungen wie Baum oder Treemap.
+5. optional native, unmittelbar gruppierbare Lucide-Geometrien im PPTX-Export;
+6. Dateiimport und -download, Laden beim Build sowie Laden über URL;
+7. Datenmengen deutlich oberhalb der verbindlichen 500-Capability-Referenzmap mit weitergehendem Profiling, Virtualisierung oder alternativen Renderstrategien;
+8. visuelle Bearbeitung mit kontrollierter Rückschreibung ins YAML;
+9. Backend, Versionierung und Zusammenarbeit;
+10. mehrere UI-Sprachen;
+11. formale Barrierefreiheit und optimierte Smartphone-Nutzung;
+12. alternative Darstellungen wie Baum oder Treemap.
 
 Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 geführt und vor Beginn der jeweiligen Phase bestätigt.
 
@@ -937,3 +991,5 @@ Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 gef
 23. Alle Exportformate enthalten den Map-Namen als Titel oberhalb der Darstellung sowie eine Legende und ausgewählte Metadaten, insbesondere den Erstellungszeitpunkt. Diese Inhalte werden im gemeinsamen Export-Frame modelliert und formatspezifisch nicht redundant aufgebaut.
 24. Im Export-Frame steht der Map-Name links oben. Rechts oben erscheinen Erstellungszeitpunkt mit Zeitzone und Ansichtsprofil sowie nur bei Bedarf Fokuspfad und aktive Filter. Unterhalb der Map erklärt eine dynamische Legende ausschließlich die tatsächlich vorkommenden Konzepte.
 25. Exportdateien verwenden das Muster `<map-id>-<ansichtsprofil>-YYYYMMDD-HHmmss.<endung>` mit lokalem Exportzeitpunkt. Ein konfigurierbarer Dateinamenpräfix bleibt eine mögliche spätere Ausbaustufe.
+26. Gerundete Exportflächen besitzen absolute Radien im gemeinsamen Szenenmodell: Gruppen `10`, Capability-Boxen `9` logische Einheiten. PPTX muss diese Radien über einen expliziten nativen OOXML-Anpassungswert oder als nachgewiesenen Fallback über eine einzelne editierbare Freiform wiedergeben; das seitenverhältnisabhängige Standard-`roundRect` ist nicht zulässig.
+27. Lucide-Icons bleiben in der ersten PPTX-Version eingebettete SVG-Bilder. Ihre browserbasierte Konvertierung in katalogweit unterstützte native DrawingML-Geometrien wird als optionale Ausbaustufe gemäß Abschnitt 17.7.2 dokumentiert und erst bei ausreichendem fachlichem Bedarf umgesetzt.

@@ -1,12 +1,12 @@
 # Capability Map Renderer – Spezifikation
 
-Status: Erweiterungsspezifikation v0.4 (umsetzungsreif)
-Stand: 17. Juli 2026
-Ziel: Umsetzungsreife Spezifikation für die nächste Ausbaustufe auf Basis des bestehenden MVP
+Status: Erweiterungsspezifikation v0.5 (umsetzungsreif)
+Stand: 18. Juli 2026
+Ziel: Umsetzungsreife Spezifikation für die schrittweise Export-Erweiterung auf Basis des bestehenden Renderers
 
 ## 1. Produktvision
 
-Das Tool visualisiert hierarchische Capability Maps auf Basis einer strukturierten YAML-Definition. Anwenderinnen und Anwender bearbeiten das YAML direkt in einer statisch deploybaren Webanwendung und sehen eine validierte Live-Vorschau. Die Visualisierung nutzt den verfügbaren Raum dynamisch, unterstützt beliebig verschachtelte Capabilities, zweistufige visuelle Gruppen, explizite Layout-Umbrüche und alternative Capability-Formen. Inhalte lassen sich suchen, filtern, ein- und ausklappen sowie als Teilbäume fokussieren.
+Das Tool visualisiert hierarchische Capability Maps auf Basis einer strukturierten YAML-Definition. Anwenderinnen und Anwender bearbeiten das YAML direkt in einer statisch deploybaren Webanwendung und sehen eine validierte Live-Vorschau. Die Visualisierung nutzt den verfügbaren Raum dynamisch, unterstützt beliebig verschachtelte Capabilities, zweistufige visuelle Gruppen, explizite Layout-Umbrüche und alternative Capability-Formen. Inhalte lassen sich suchen, filtern, ein- und ausklappen sowie als Teilbäume fokussieren. Die erzeugte Darstellung kann schrittweise als SVG, daraus rasterisiertes PNG, vektorbasiertes PDF und zuletzt als editierbare PowerPoint-Präsentation exportiert werden.
 
 Das Rendering ist deterministisch: Reihenfolge, Hierarchie, Ausrichtung und relative Größen werden ausschließlich aus dem YAML abgeleitet. Die Visualisierung selbst dient im MVP nicht als grafischer Struktureditor.
 
@@ -49,6 +49,8 @@ Nicht Bestandteil des MVP sind:
 - frei definierbare Polygonformen oder frei konfigurierbare Chevron-Geometrien;
 - frei referenzierbare Bilder, HTML-Inhalte, Skripte oder externe Icon-URLs.
 
+Die zuvor als Nicht-Ziel behandelten Exporte nach PNG, SVG und PowerPoint sowie der neu ergänzte PDF-Export sind Gegenstand der separaten Erweiterung in Abschnitt 17. Sie verändern nicht rückwirkend den Umfang des ursprünglichen MVP.
+
 ## 4. Zielgruppen und Nutzungsszenario
 
 Primäre Zielgruppe sind Enterprise- und Business-Architektinnen und -Architekten sowie Personen aus Organisations- und Produktentwicklung in privatwirtschaftlichen Unternehmen.
@@ -61,6 +63,7 @@ Primärer Ablauf:
 4. Bei gültiger Eingabe aktualisiert sich die Map.
 5. Bei ungültiger Eingabe bleiben die letzte gültige Map und ihr Interaktionszustand erhalten; die Vorschau wird als nicht aktuell gekennzeichnet.
 6. Die Person sucht, filtert, klappt Capabilities ein oder aus, fokussiert einen Teilbaum per Doppelklick und betrachtet Details.
+7. Die Person exportiert die aktuell erzeugte Darstellung lokal in einem unterstützten Ausgabeformat.
 
 ## 5. Bedienoberfläche
 
@@ -86,6 +89,7 @@ Die Map bietet:
 - Zoom per Mausrad beziehungsweise Trackpad;
 - Verschieben des Viewports;
 - Schaltflächen für Vergrößern, Verkleinern und „Ansicht einpassen“;
+- eine Exportaktion mit den je Ausbaustufe verfügbaren Formaten PNG, SVG, PDF und PPTX;
 - eine kompakte Auswahl der Ansichtstiefe mit „Ebene 1“, „Ebene 2“, „Ebene 3“ und „Vollständig“;
 - Auswahl einer Capability per einfachem Klick;
 - Ein- und Ausklappen einer Capability mit Kindern;
@@ -561,6 +565,8 @@ Semantisch validiert werden mindestens:
 
 React Flow übernimmt Viewport, Eingaben und das Rendering verschachtelter Custom Nodes. Es bestimmt nicht die fachliche Anordnung. Eine eigene, pure TypeScript-Layoutfunktion berechnet in einer Bottom-up-Phase zunächst die bevorzugten Platzbedarfe ausschließlich des sichtbaren Baums und weist in einer Top-down-Phase lückenlos die verfügbaren absoluten Rechtecke zu. Anschließend übersetzt der Adapter Capabilities und Gruppen in React-Flow-Nodes mit Elternbezug; Flushes existieren nur in der Layout-Zwischenrepräsentation.
 
+Der Export greift nicht auf einen Screenshot des sichtbaren Browserausschnitts zurück. Ein formatneutrales Export-Szenenmodell wird aus demselben sichtbaren Baum und denselben absoluten Layoutrechtecken abgeleitet. Daraus wird als erste kanonische Ausgabe ein selbstständiges SVG erzeugt. PNG rasterisiert ausschließlich dieses SVG; PDF übernimmt dieselbe SVG-Geometrie soweit technisch möglich vektorbasiert. Dadurch verwenden Bildschirmdarstellung und alle Exportformate dieselbe Geometrie, während formatspezifische Renderer keine React-Flow- oder Viewport-Transformationen rekonstruieren oder redundante Zeichenlogik pflegen müssen.
+
 ### 13.2 Schichten
 
 ```text
@@ -582,6 +588,7 @@ Vorgesehene interne Module:
 - `layout`: pure, rekursive Bedarfs- und Layoutberechnung einschließlich Bändern, Tracks und Flushes;
 - `visibility`: Suche, Filter, Collapse, Fokus und Kontext-Ahnen;
 - `renderer`: Adapter und Custom Nodes für React Flow;
+- `export`: formatneutrales Szenenmodell, gemeinsame Export-Tokens und Adapter für PNG, SVG, PDF und PPTX;
 - `editor`: CodeMirror-Integration;
 - `app`: UI-Komposition, lokaler Zustand und Persistenz.
 
@@ -595,6 +602,7 @@ Der Zustand wird in klar getrennte Bereiche aufgeteilt:
 - Ansicht: Suche, Filter, Collapse-Set, Fokus-ID, Auswahl-ID;
 - Ansichtsprofil: „Ebene 1“, „Ebene 2“, „Ebene 3“ oder „Vollständig“;
 - Viewport: Zoom und Pan;
+- Export: gewähltes Format, laufender Fortschritt, Ergebnis- oder Fehlermeldung;
 - Persistenz: Speicherstatus und Schema-Version.
 
 Für das MVP genügt React State mit Reducer und Context. Eine zusätzliche globale State-Bibliothek wird nur eingeführt, wenn die Umsetzung einen konkreten Bedarf zeigt.
@@ -609,6 +617,7 @@ Verbindliche Testbasis ist die komplexe Referenzmap mit ungefähr 500 Capabiliti
 - gültige Änderung bis sichtbare Vorschau einschließlich Bottom-up-Bedarfsberechnung: Zielwert unter 750 ms;
 - Suche, Filter-, Collapse- oder Fokusänderung bis aktualisierte Map: Zielwert unter 350 ms;
 - flüssiges Zoomen und Verschieben im üblichen Arbeitsbereich.
+- Export der komplexen Referenzmap darf die Oberfläche nicht dauerhaft blockieren; konkrete Zeit- und Speicherziele werden vor jeder Formatstufe anhand eines technischen Spikes verbindlich festgelegt.
 
 Tiefere Strukturen bleiben zulässig, sind aber außerhalb der garantierten Performance-Baseline. Es gibt keine künstliche Tiefenbegrenzung im Schema. Nicht sichtbare Unterbäume werden nicht gerendert.
 
@@ -626,6 +635,7 @@ Tiefere Strukturen bleiben zulässig, sind aber außerhalb der garantierten Perf
 - Externe Ressourcen aus dem YAML werden nicht geladen.
 - Icon-Namen werden ausschließlich gegen den automatisch von `lucide-react` bereitgestellten Katalog aufgelöst; externe Ressourcen werden dabei nicht geladen.
 - Verarbeitung und Speicherung erfolgen ausschließlich lokal im Browser.
+- Exportdateien werden ausschließlich lokal erzeugt; weder YAML noch gerenderte Inhalte werden für den Export an einen Server übertragen.
 
 ### 14.4 Entwicklungsqualität
 
@@ -678,6 +688,7 @@ Besonders vollständig zu testen sind:
 - als normale Boxen dargestellte horizontale Chevron-Konfigurationen ohne Abwärtsindikator oder Verbindungslinie;
 - vertikale Chevron-Wertströme mit grauer Polygonumrandung;
 - horizontales und vertikales Gruppen-Rendering auf zwei Ebenen einschließlich getrenntem Collapse-Zustand.
+- Exportaktion, Fortschritts- und Fehlerzustand sowie korrekter Dateiname und MIME-Typ je freigeschaltetem Format.
 
 ### 15.3 End-to-End- und visuelle Tests
 
@@ -688,6 +699,9 @@ Besonders vollständig zu testen sind:
 - horizontale und vertikale Gruppen auf zwei Ebenen sowie ihre schmalen Collapse-Platzhalter;
 - kompakte Blätter sowie gemischte Box- und Chevron-Wertstromdarstellungen;
 - tiefer verschachtelte Map mit semantischem Zoom;
+- Download jedes freigeschalteten Exportformats im regulären und im Standalone-Build;
+- Prüfung, dass Viewport-Steuerungen, Editor, Detailpanel, Hover- und Auswahlmarkierungen nicht in der Exportdatei erscheinen;
+- formatbezogene Struktur- beziehungsweise visuelle Regressionen gemäß Abschnitt 17.9;
 - komplexe 500-Capability-Referenzmap gemäß Abschnitt 15.4;
 - Desktopansicht und Tablet-Umschaltung;
 - kritische Abläufe in Chromium, Firefox und WebKit.
@@ -739,23 +753,156 @@ Das MVP gilt als abgenommen, wenn:
 19. die Referenzdatei alle in Abschnitt 15.4 definierten Varianzmerkmale reproduzierbar abdeckt;
 20. eine Map ohne gespeicherten Ansichtsstatus in „Ebene 1“ startet und alle Ansichtsprofile reproduzierbare Tiefen erzeugen.
 
-## 17. Ausbaustufen
+## 17. Export-Erweiterung
+
+### 17.1 Zielbild und Exportumfang
+
+Die Exportfunktion erzeugt lokal herunterladbare Dateien in den Formaten PNG, SVG, PDF und PPTX. Für die erste Umsetzung jedes Formats gilt als gemeinsamer Exportumfang:
+
+- Exportiert wird die **aktuell erzeugte fachliche Darstellung** einschließlich des aktiven Ansichtsprofils, Fokus, Filterung sowie Capability- und Gruppen-Collapse-Zustand.
+- Exportiert werden die vollständigen logischen Layoutgrenzen dieser Darstellung, unabhängig vom aktuellen Zoom, Pan und sichtbaren Browserausschnitt.
+- Editor, Detailpanel, Toolbar, React-Flow-Steuerungen, Hintergrundraster, Hover-Zustand, aktuelle Auswahlkontur und sonstige Bedienoberfläche sind nicht Bestandteil der Datei.
+- Fachlich wirksame Darstellungsmerkmale wie Gruppen, Boxen, Chevrons, Farben, Icons, Namen, Zeilenumbrüche, Kontextabblendung und sichtbare Nachfahrenzähler bleiben erhalten.
+- Jedes Format enthält einen Export-Frame mit dem Map-Namen als Titel oberhalb der Darstellung sowie einer Legende und ausgewählten Exportmetadaten. Diese Inhalte gehören zur Exportdatei, nicht zur interaktiven Map und verändern deren Layout nicht.
+- Der Titel steht links oben. Rechts oben erscheinen der Erstellungszeitpunkt mit Zeitzone und das aktive Ansichtsprofil. Ein Fokuspfad und aktive Filter werden nur dann als zusätzliche kompakte Metadatenzeilen ausgegeben, wenn sie tatsächlich aktiv sind.
+- Die Legende steht unterhalb der Map und enthält ausschließlich in der aktuellen Darstellung vorkommende Konzepte. Mögliche Einträge sind Gruppe, Capability-Box, Wertstrom-Chevron, Indikator für verborgene Nachfahren und abgeblendeter Kontext.
+- Eine aktive reine Textsuche beeinflusst den Export zunächst nicht visuell; Suchkonturen werden nicht exportiert. Filter und Fokus bestimmen dagegen weiterhin den sichtbaren Inhalt.
+- Als Datenquelle dient ausschließlich die letzte gültige Darstellung. Ist die Vorschau wegen ungültigem YAML veraltet, bleibt Export möglich, muss aber vor dem Download deutlich auf den Export der letzten gültigen Version hinweisen.
+- Die Erzeugung erfolgt vollständig im Browser und muss auch im Standalone-Build über `file://` ohne Webserver oder externe Ressourcen funktionieren.
+
+Ein zusätzlicher Export der vollständigen, unabhängig vom UI-Zustand komplett ausgeklappten Map oder einer vom Bildschirm abweichenden Ansichtstiefe ist nicht Teil der ersten Exportversion und bleibt eine spätere Erweiterung.
+
+### 17.2 Gemeinsames Export-Szenenmodell
+
+Vor dem ersten Format wird eine formatneutrale, immutable Export-Repräsentation eingeführt. Sie enthält mindestens:
+
+- Dokumentmetadaten wie Map-ID, Map-Name, Exportzeitpunkt und Schema-Version;
+- Gesamtbreite, Gesamthöhe und Hintergrund des vollständigen Export-Frames;
+- Titel-, Legenden- und Metadatenblöcke mit eigener Geometrie und Typografie;
+- geordnete Gruppen- und Capability-Elemente mit stabiler ID und Hierarchiebezug;
+- absolute Rechtecke, Innenabstände, Ebenenreihenfolge und Clip-Geometrien;
+- wirksame Füll-, Text-, Rahmen- und Konturfarben;
+- Namen, Zeilenbegrenzung, Schriftgröße, Ausrichtung und Schriftschnitt;
+- Lucide-Icons als formatsunabhängige Vektorpfade;
+- Box-, Gruppen- und Chevron-Geometrien sowie sichtbare Zustandsindikatoren.
+
+Das Szenenmodell darf keine DOM-Elemente, React-Komponenten, CSS-Klassen oder React-Flow-Objekte enthalten. Gemeinsame Export-Tokens müssen aus denselben Designwerten wie die Bildschirmdarstellung abgeleitet werden. Die Reihenfolge im Szenenmodell definiert verbindlich die Zeichen- und Überlagerungsreihenfolge aller Formate.
+
+Der Erstellungszeitpunkt wird einmal pro Exportvorgang erzeugt und anschließend unverändert von allen Formatadaptern verwendet. Tests müssen eine injizierbare Uhr verwenden können. Die sichtbare Darstellung nutzt das lokale Datum und die lokale Uhrzeit einschließlich einer eindeutigen Zeitzonenangabe. Filter werden mit Feldbezeichnung und ausgewählten Werten zusammengefasst; der Fokus wird als vollständiger Capability-Pfad ausgegeben.
+
+### 17.3 Bedienung, Dateinamen und Fehlerfälle
+
+- Die Kopfzeile erhält eine kompakte Exportaktion. Noch nicht implementierte Formate werden nicht als aktive Aktionen angeboten.
+- Nach Auswahl eines Formats wird die Datei ohne weiteren Serverkontakt erzeugt und über den Browser heruntergeladen.
+- Während der Erzeugung verhindert ein eindeutiger Fortschrittszustand Mehrfachauslösungen desselben Exports; die übrige Anwendung bleibt soweit technisch möglich bedienbar.
+- Fehler führen nicht zum Verlust von YAML oder UI-Zustand und werden mit Format, Ursache und erneut ausführbarer Aktion angezeigt.
+- Ein Abbruch oder Browserlimit erzeugt keine leere beziehungsweise unvollständige Datei.
+- Der Dateiname folgt dem Muster `<map-id>-<ansichtsprofil>-YYYYMMDD-HHmmss.<endung>` und verwendet den lokalen Exportzeitpunkt. Ungültige Dateisystemzeichen werden entfernt. Ein frei konfigurierbarer Präfix bleibt eine mögliche spätere Ausbaustufe.
+- MIME-Typen sind `image/png`, `image/svg+xml`, `application/pdf` und `application/vnd.openxmlformats-officedocument.presentationml.presentation`.
+
+### 17.4 Phase 1 – SVG
+
+SVG baut auf demselben Szenenmodell auf und stellt die Map als selbstständige Vektordatei bereit.
+
+- Die Wurzel enthält eine deterministische `viewBox` über die vollständigen logischen Layoutgrenzen.
+- Gruppen, Boxen, Chevrons, Rahmen, Texte und Lucide-Icons werden als native SVG-Elemente ausgegeben.
+- Texte bleiben als Text erhalten und werden nicht generell in Pfade umgewandelt.
+- Sämtliche Styles und Iconpfade werden eingebettet; die Datei besitzt keine externen Ressourcen, Skripte, Event-Handler oder `foreignObject`-Abhängigkeiten.
+- IDs im SVG sind stabil, dokumentweit eindeutig und aus den fachlichen IDs ableitbar, ohne ungültige XML-Zeichen zu übernehmen.
+- Die Ausgabe muss in aktuellen Browsern sowie üblichen Vektorprogrammen geöffnet werden können.
+- Für SVG sind XML-Gültigkeit, Struktur, ViewBox, Texte, Pfade, Farben, fehlende externe Referenzen und eine visuelle Regression zu testen.
+
+Das freigegebene SVG bildet anschließend die kanonische visuelle Zwischenrepräsentation für PNG und PDF. Es umfasst den vollständigen Export-Frame einschließlich Titel, Legende und Metadaten. Änderungen an gemeinsamer Geometrie, Textplatzierung, Farben oder Icons werden zuerst im Szenenmodell und SVG umgesetzt und nicht separat in nachgelagerten Formaten dupliziert.
+
+### 17.5 Phase 2 – PNG
+
+PNG wird ausschließlich durch Rasterisierung des in Phase 1 freigegebenen SVGs erzeugt und besitzt keine eigene fachliche Zeichenimplementierung.
+
+- Die vollständige logische Exportfläche wird mit weißem Hintergrund als verlustfreie Rastergrafik ausgegeben.
+- Die Standardauflösung verwendet einen Skalierungsfaktor von `2` gegenüber den internen SVG-Koordinaten, damit Text und Konturen auf üblichen Displays scharf bleiben.
+- Seitenverhältnis und Anordnung entsprechen exakt der SVG-`viewBox`; der aktuelle Viewport wird nicht übernommen.
+- Vor der Rasterung sind bereits im SVG alle Icons, Schriften und Styles lokal aufgelöst. Externe URLs oder nachgeladene Assets sind unzulässig.
+- Überschreitet die resultierende Bitmap ein Browser- oder Speicherlimit, bricht der Export mit einer verständlichen Meldung ab, statt stillschweigend Auflösung oder Ausschnitt zu verändern.
+- Für PNG sind Pixelabmessungen, nicht leere Ausgabe, Hintergrund, Farbfidelität und eine visuelle Regression gegen genau das zugrunde liegende SVG zu testen.
+
+Ein transparenter PNG-Hintergrund sowie auswählbare Skalierungsfaktoren wie 1×, 2× und 4× sind mögliche spätere Ausbaustufen. Die erste Version bietet hierfür keine zusätzlichen Bedienelemente.
+
+### 17.6 Phase 3 – PDF
+
+PDF verwendet die in Phase 1 freigegebene SVG-Ausgabe als visuelle Quelle und darf nicht lediglich ein komprimiertes PNG in eine PDF-Hülle einbetten.
+
+- Texte, Linien, Flächen, Icons und Chevron-Konturen werden aus dem SVG übernommen und bleiben soweit von der gewählten PDF-Bibliothek unterstützt vektorbasiert.
+- Eine separate, redundante PDF-Zeichenimplementierung für Capability- oder Gruppengeometrien ist unzulässig. Notwendige PDF-spezifische Transformationen beschränken sich auf Seite, Skalierung, Metadaten und technisch erforderliche SVG-Kompatibilitätsanpassungen.
+- Die erste PDF-Ausbaustufe erzeugt genau eine A3-Seite im Querformat mit umlaufend 10 mm Rand. Der vollständige Export-Frame einschließlich Titel, Legende, Metadaten und aktueller Darstellung wird proportional, zentriert und ohne Beschnitt in die verbleibende Inhaltsfläche eingepasst.
+- Nicht von der Map belegte Restfläche bleibt weiß; das Seitenverhältnis der Darstellung wird niemals verzerrt.
+- Dokumenttitel und Erzeuger werden aus Map-Name und Anwendung gesetzt; YAML-Inhalte oder Capability-Metadaten werden nicht ungefragt als PDF-Metadaten eingebettet.
+- Für PDF sind Dateisignatur, Seitenzahl, Seitengröße, extrahierbare Texte, fehlender Beschnitt und visuelle Regressionen zu testen.
+
+Eine dynamisch an das Map-Seitenverhältnis angepasste Seitengröße, auswählbare Standardformate und Orientierungen sowie eine automatische Mehrseitenaufteilung sind mögliche spätere Ausbaustufen.
+
+### 17.7 Phase 4 – PPTX
+
+PPTX ist wegen der erforderlichen Editierbarkeit und der Abbildung der verschachtelten Geometrie die letzte und eigenständig freizugebende Formatstufe.
+
+- Die Ausgabe ist keine reine Screenshot-Folie. Gruppen, Capability-Boxen, Chevron-Flächen, Konturen und Texte werden soweit technisch möglich als einzeln bearbeitbare PowerPoint-Formen erzeugt.
+- Capability-Namen bleiben editierbare Textinhalte. Lucide-Icons dürfen als eingebettete SVG-Grafiken vorliegen, sofern eine Umwandlung in editierbare Freiformpfade unverhältnismäßig oder nicht robust ist.
+- Die Bestandteile einer Capability werden, sofern die gewählte Bibliothek dies robust unterstützt, als gemeinsam verschiebbares PowerPoint-Objekt gruppiert. Form, Rahmen und Texte bleiben nach dem Auflösen der Gruppierung einzeln editierbar; das Icon bleibt ein eingebettetes SVG.
+- Visuelle Gruppencontainer bleiben eigenständige editierbare Hintergrundformen mit separatem editierbarem Namen. Eine rekursiv verschachtelte PowerPoint-Gruppierung entlang der fachlichen Hierarchie ist in der ersten Version nicht erforderlich.
+- Fachliche IDs und Hierarchiebezüge werden intern in der Exportzuordnung erhalten, damit Tests und spätere Erweiterungen Elemente eindeutig zuordnen können; sie müssen nicht als sichtbarer Text erscheinen.
+- Die visuelle Zeichenreihenfolge entspricht dem Szenenmodell. Gruppen liegen hinter ihren enthaltenen Capabilities, ohne deren Bearbeitbarkeit zu verhindern.
+- Die erste PPTX-Ausbaustufe erzeugt genau eine 16:9-Breitbildfolie. Der vollständige Export-Frame einschließlich Titel, Legende, Metadaten und aktueller Darstellung wird proportional, zentriert und mit einem umlaufenden Rand von 0,25 Zoll eingepasst; sein Seitenverhältnis wird nicht verzerrt.
+- Die erste PPTX-Ausbaustufe darf nicht umgesetzt werden, bevor durch einen technischen Spike nachgewiesen ist, dass die Referenzmap mit akzeptabler Geometrie-, Text- und Farbfidelität geöffnet und bearbeitet werden kann.
+- Der technische Spike muss insbesondere die robuste Erzeugung, gemeinsame Verschiebbarkeit und spätere Auflösbarkeit der Capability-Objekte bestätigen. Ist dies mit der gewählten Bibliothek nicht zuverlässig möglich, wird vor der PPTX-Implementierung erneut entschieden und nicht stillschweigend auf eine einzige SVG-Grafik ausgewichen.
+- Für PPTX sind OOXML-Struktur, Öffnen ohne Reparaturmeldung, Folienzahl und -größe, vorhandene editierbare Texte und Formen, Elementreihenfolge sowie visuelle Regressionen gegen die Bildschirmdarstellung zu testen.
+
+Eine Übersichtsfolie mit automatisch erzeugten Detailfolien, konfigurierbare Folienformate, eine automatische Mehrfolienaufteilung, editierbare Icon-Freiformpfade und rekursiv verschachtelte PowerPoint-Gruppen sind mögliche spätere Ausbaustufen.
+
+### 17.8 Implementierungsreihenfolge und Freigabegates
+
+Die Umsetzung erfolgt strikt schrittweise:
+
+0. **Export-Fundament:** Szenenmodell, gemeinsame Bounds- und Styleauflösung, Exportzustand sowie Testhilfen; noch kein öffentliches Dateiformat.
+1. **SVG:** selbstständigen Vektorexport als kanonische visuelle Ausgabe implementieren, testen und fachlich abnehmen.
+2. **PNG:** das freigegebene SVG rasterisieren, testen und fachlich abnehmen.
+3. **PDF:** einseitigen vektorbasierten Dokumentexport implementieren, testen und fachlich abnehmen.
+4. **PPTX:** editierbaren Präsentationsexport nach separatem Spike und den noch offenen Detailentscheidungen implementieren.
+
+Eine Phase beginnt erst, wenn die vorherige Phase ihre formatbezogenen Abnahmekriterien erfüllt und keine offenen Fehler im gemeinsamen Szenenmodell verdeckt. Implementierungen dürfen intern Vorarbeiten für spätere Formate enthalten, deren UI-Aktionen bleiben jedoch bis zur jeweiligen Freigabe verborgen.
+
+### 17.9 Abnahmekriterien der Export-Erweiterung
+
+Die gesamte Export-Erweiterung gilt als abgeschlossen, wenn:
+
+1. PNG, SVG, PDF und PPTX über dieselbe formatneutrale Szene dieselbe aktuelle fachliche Darstellung ausgeben;
+2. Zoom, Pan und UI-Chrome die Exportgrenzen nicht beeinflussen;
+3. alle Dateien vollständig lokal und auch im Standalone-Build erzeugt werden;
+4. Farben, Icons, Texte, Umbrüche, Gruppen, Boxen, Chevrons und sichtbare Collapse-Strukturen formatgerecht erhalten bleiben;
+5. jedes Format seinen korrekten MIME-Typ, Dateinamen und eine nicht leere valide Datei liefert;
+6. SVG keine externen Referenzen oder Skripte enthält;
+7. PDF die vollständige Darstellung ohne Beschnitt auf der vereinbarten Seite enthält und Text soweit vorgesehen extrahierbar bleibt;
+8. PPTX ohne Reparaturmeldung geöffnet werden kann und die vereinbarten Texte und Formen editierbar sind;
+9. automatisierte Struktur-, Download- und visuelle Regressionstests für alle vier Formate erfolgreich sind;
+10. jede Formatphase separat fachlich abgenommen wurde, bevor das nachfolgende Format öffentlich freigeschaltet wird.
+
+## 18. Ausbaustufen
 
 Priorisierte Weiterentwicklung nach dem MVP:
 
-1. Dateiimport und -download, Laden beim Build sowie Laden über URL;
-2. Export nach SVG und PNG;
-3. PowerPoint-Export, möglichst mit editierbaren Formen und erhaltener Capability-Hierarchie statt eines reinen Screenshots;
-4. Datenmengen deutlich oberhalb der verbindlichen 500-Capability-Referenzmap mit weitergehendem Profiling, Virtualisierung oder alternativen Renderstrategien;
-5. visuelle Bearbeitung mit kontrollierter Rückschreibung ins YAML;
-6. Backend, Versionierung und Zusammenarbeit;
-7. mehrere UI-Sprachen;
-8. formale Barrierefreiheit und optimierte Smartphone-Nutzung;
-9. alternative Darstellungen wie Baum oder Treemap.
+1. Export-Fundament und SVG gemäß Abschnitt 17;
+2. PNG-Export durch Rasterisierung des SVGs;
+3. PDF-Export;
+4. PPTX-Export als letzte Exportphase;
+5. Dateiimport und -download, Laden beim Build sowie Laden über URL;
+6. Datenmengen deutlich oberhalb der verbindlichen 500-Capability-Referenzmap mit weitergehendem Profiling, Virtualisierung oder alternativen Renderstrategien;
+7. visuelle Bearbeitung mit kontrollierter Rückschreibung ins YAML;
+8. Backend, Versionierung und Zusammenarbeit;
+9. mehrere UI-Sprachen;
+10. formale Barrierefreiheit und optimierte Smartphone-Nutzung;
+11. alternative Darstellungen wie Baum oder Treemap.
 
-Für den späteren PowerPoint-Export sind insbesondere Exportumfang (vollständige oder aktuell gefilterte Map), Seitenaufteilung und Editierbarkeit vor der Umsetzung separat zu spezifizieren.
+Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 geführt und vor Beginn der jeweiligen Phase bestätigt.
 
-## 18. Architekturquellen
+## 19. Architekturquellen
 
 - [React Flow: Sub Flows](https://reactflow.dev/learn/layouting/sub-flows)
 - [React Flow: Layouting](https://reactflow.dev/learn/layouting/layouting)
@@ -763,7 +910,7 @@ Für den späteren PowerPoint-Export sind insbesondere Exportumfang (vollständi
 - [CodeMirror Documentation](https://codemirror.net/docs/)
 - [Vite Features](https://vite.dev/guide/features.html)
 
-## 19. Bestätigte Detailentscheidungen
+## 20. Bestätigte Detailentscheidungen
 
 1. `owner` ist im MVP genau ein optionaler String für die primäre Verantwortung. `responsibilities` bleibt eine optionale String-Liste; weitere Beteiligte können über `metadata` beschrieben werden.
 2. Das MVP liefert ausschließlich ein helles Theme aus. Zentrale Design-Tokens bereiten spätere Themes vor.
@@ -781,3 +928,12 @@ Für den späteren PowerPoint-Export sind insbesondere Exportumfang (vollständi
 14. Ohne gespeicherten Ansichtsstatus startet die Map in „Ebene 1“. Manuelle Collapse-Zustände und das Ansichtsprofil werden ausschließlich lokal gespeichert; alte `overview`-Zustände werden auf „Ebene 1“ migriert.
 15. Die Referenzmap enthält fünf fachliche Hauptgruppen mit null bis drei Untergruppen und verwendet Chevrons nur für zusammenhängende Wertströme.
 16. Jede rekursive Elementliste teilt ihren verfügbaren Inhaltsbereich vollständig unter den aktuell sichtbaren Elementen auf. Verdeckte Ebenen beeinflussen weder automatische Track- noch Layer-Gewichte; kompakte Blattmaße dürfen keine leeren Slot-Restflächen erzeugen.
+17. Der Export wird schrittweise als SVG, daraus rasterisiertes PNG, vektorbasiertes PDF und zuletzt PPTX umgesetzt. Jede Formatphase wird separat getestet und abgenommen; PPTX beginnt erst nach einem technischen Editierbarkeits-Spike.
+18. Die erste Exportversion gibt ausschließlich die aktuell erzeugte fachliche Darstellung einschließlich Ansichtsprofil, Filter, Fokus und Collapse-Zustand aus. Eine unabhängige Exporttiefe oder automatisch vollständig ausgeklappte Map ist nicht enthalten.
+19. PNG besitzt in der ersten Version einen weißen Hintergrund und wird mit einem festen Skalierungsfaktor von 2× aus dem SVG rasterisiert. Transparenz und wählbare Auflösungen bleiben mögliche spätere Ausbaustufen.
+20. PDF erzeugt zunächst genau eine A3-Seite im Querformat mit 10 mm Rand und proportional eingepasster aktueller Darstellung. Dynamische Seitengrößen, Formatwahl und Mehrseitenaufteilung bleiben mögliche spätere Ausbaustufen.
+21. PPTX erzeugt zunächst genau eine 16:9-Breitbildfolie mit 0,25 Zoll Rand und proportional eingepasster aktueller Darstellung. Detailfolien, andere Folienformate und Mehrfolienaufteilung bleiben mögliche spätere Ausbaustufen.
+22. PPTX bildet Gruppenflächen, Boxen und Chevrons als native editierbare Formen sowie Namen und Zähler als editierbare Texte ab. Icons werden als SVG eingebettet. Capability-Bestandteile werden möglichst als gemeinsam verschiebbare, auflösbare Objekte gruppiert; rekursiv verschachtelte PowerPoint-Gruppen und editierbare Iconpfade sind nicht Teil der ersten Version.
+23. Alle Exportformate enthalten den Map-Namen als Titel oberhalb der Darstellung sowie eine Legende und ausgewählte Metadaten, insbesondere den Erstellungszeitpunkt. Diese Inhalte werden im gemeinsamen Export-Frame modelliert und formatspezifisch nicht redundant aufgebaut.
+24. Im Export-Frame steht der Map-Name links oben. Rechts oben erscheinen Erstellungszeitpunkt mit Zeitzone und Ansichtsprofil sowie nur bei Bedarf Fokuspfad und aktive Filter. Unterhalb der Map erklärt eine dynamische Legende ausschließlich die tatsächlich vorkommenden Konzepte.
+25. Exportdateien verwenden das Muster `<map-id>-<ansichtsprofil>-YYYYMMDD-HHmmss.<endung>` mit lokalem Exportzeitpunkt. Ein konfigurierbarer Dateinamenpräfix bleibt eine mögliche spätere Ausbaustufe.

@@ -124,6 +124,15 @@ export type NormalizedGroupItem =
   | NormalizedFlush;
 export type NormalizedRootItem = NormalizedGroupItem;
 
+export interface NormalizedHierarchyEntry {
+  kind: 'capability' | 'group';
+  id: string;
+  name: string;
+  parentId?: string;
+  path: string[];
+  pathNames: string[];
+}
+
 export interface NormalizedMap {
   id: string;
   name: string;
@@ -133,6 +142,7 @@ export interface NormalizedMap {
   capabilities: NormalizedCapability[];
   capabilitiesById: Map<string, NormalizedCapability>;
   groupsById: Map<string, NormalizedCapabilityGroup>;
+  hierarchyById: Map<string, NormalizedHierarchyEntry>;
 }
 
 export interface Diagnostic {
@@ -160,6 +170,7 @@ export interface VisibleCapability {
   children: VisibleCapabilityChild[];
   contextOnly: boolean;
   searchMatch: boolean;
+  collapsed: boolean;
 }
 
 export type VisibleCapabilityChild = VisibleCapability | VisibleFlush;

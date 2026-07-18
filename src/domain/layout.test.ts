@@ -34,7 +34,14 @@ function item(
     depth: 0,
     descendantCount: 0,
   };
-  return { kind: 'capability', capability, children: [], contextOnly: false, searchMatch: false };
+  return {
+    kind: 'capability',
+    capability,
+    children: [],
+    contextOnly: false,
+    searchMatch: false,
+    collapsed: false,
+  };
 }
 
 function group(

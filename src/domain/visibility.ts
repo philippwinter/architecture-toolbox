@@ -107,7 +107,7 @@ interface VisibilityArguments {
   filters: FilterSelection;
   collapsedIds: Set<string>;
   collapsedGroupIds?: Set<string>;
-  focusId?: string;
+  focusTargetId?: string;
 }
 
 function cleanFlushes<T extends { kind: string }>(items: T[]): T[] {
@@ -120,7 +120,13 @@ function cleanFlushes<T extends { kind: string }>(items: T[]): T[] {
 
 export function computeVisibleTree(
   map: NormalizedMap,
-  { search, filters, collapsedIds, collapsedGroupIds = new Set(), focusId }: VisibilityArguments,
+  {
+    search,
+    filters,
+    collapsedIds,
+    collapsedGroupIds = new Set(),
+    focusTargetId,
+  }: VisibilityArguments,
 ): VisibleRootItem[] {
   const filterActive = Object.values(filters).some((values) => values.length > 0);
   const normalizedSearch = search.trim().toLocaleLowerCase('de');
@@ -149,9 +155,11 @@ export function computeVisibleTree(
     if (filterActive && !directFilterMatch && !hasRequiredDescendant) return undefined;
 
     const forceOpen =
+      capability.id === focusTargetId ||
       (filterActive && hasRequiredDescendant) ||
       (normalizedSearch.length > 0 && visibleDescendants.some(containsSearchMatch));
-    const children = collapsedIds.has(capability.id) && !forceOpen ? [] : descendantResults;
+    const collapsed = collapsedIds.has(capability.id) && !forceOpen;
+    const children = collapsed ? [] : descendantResults;
 
     return {
       kind: 'capability',
@@ -159,6 +167,7 @@ export function computeVisibleTree(
       children,
       contextOnly: filterActive && !directFilterMatch,
       searchMatch: directSearchMatch,
+      collapsed,
     };
   };
 
@@ -186,7 +195,10 @@ export function computeVisibleTree(
     });
     const autoCollapsed = filterActive && !hasVisibleCapability;
     const containsRequiredMatch = groupContainsRequiredMatch(visibleItems);
-    const collapsed = (collapsedGroupIds.has(group.id) || autoCollapsed) && !containsRequiredMatch;
+    const collapsed =
+      group.id !== focusTargetId &&
+      (collapsedGroupIds.has(group.id) || autoCollapsed) &&
+      !containsRequiredMatch;
     return {
       kind: 'group',
       group,
@@ -196,10 +208,14 @@ export function computeVisibleTree(
     };
   };
 
-  if (focusId) {
-    const focused = map.capabilitiesById.get(focusId);
-    const visibleFocused = focused ? visitCapability(focused) : undefined;
-    return visibleFocused ? [visibleFocused] : [];
+  if (focusTargetId) {
+    const focusedCapability = map.capabilitiesById.get(focusTargetId);
+    if (focusedCapability) {
+      const visibleFocused = visitCapability(focusedCapability);
+      return visibleFocused ? [visibleFocused] : [];
+    }
+    const focusedGroup = map.groupsById.get(focusTargetId);
+    return focusedGroup ? [visitGroup(focusedGroup)] : [];
   }
 
   return cleanFlushes(

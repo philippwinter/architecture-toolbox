@@ -2,11 +2,20 @@ export const capabilityPresentationTokens = {
   compactHeight: 110,
   compactIconMinHeight: 28,
   regularHeaderHeight: 47,
-  regularNameFontSize: 13,
-  compactNameFontSize: 11,
-  nameLineHeight: 1.2,
+  regularIconSize: 20,
+  compactIconSize: 18,
+  regularNameFontSize: 15,
+  compactNameFontSize: 12,
+  minimalNameFontSize: 10,
+  iconTextGap: 8,
+  nameLineHeight: 1.15,
   nameVerticalInset: 4,
   maxNameLines: 3,
+} as const;
+
+export const groupPresentationTokens = {
+  regularNameFontSize: 12,
+  collapsedNameFontSize: 11,
 } as const;
 
 export interface CapabilityPresentation {

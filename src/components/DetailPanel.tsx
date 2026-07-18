@@ -5,6 +5,7 @@ import { CapabilityIcon } from './CapabilityIcon';
 interface DetailPanelProps {
   capability: NormalizedCapability;
   collapsed: boolean;
+  focusExpanded?: boolean;
   onClose: () => void;
   onToggle: (id: string) => void;
 }
@@ -16,7 +17,13 @@ function renderMetadataValue(value: MetadataValue): string {
   return String(value);
 }
 
-export function DetailPanel({ capability, collapsed, onClose, onToggle }: DetailPanelProps) {
+export function DetailPanel({
+  capability,
+  collapsed,
+  focusExpanded = false,
+  onClose,
+  onToggle,
+}: DetailPanelProps) {
   return (
     <aside className="detail-panel" aria-label={`Details zu ${capability.name}`}>
       <div className="detail-panel__top">
@@ -37,8 +44,14 @@ export function DetailPanel({ capability, collapsed, onClose, onToggle }: Detail
 
       <div className="detail-actions">
         {capability.children.some((child) => child.kind === 'capability') && (
-          <button type="button" onClick={() => onToggle(capability.id)}>
-            <Layers3 size={15} /> {collapsed ? 'Ausklappen' : 'Einklappen'}
+          <button
+            type="button"
+            disabled={focusExpanded}
+            title={focusExpanded ? 'Die direkte nächste Ebene ist im Fokus automatisch geöffnet.' : undefined}
+            onClick={() => onToggle(capability.id)}
+          >
+            <Layers3 size={15} />{' '}
+            {focusExpanded ? 'Im Fokus geöffnet' : collapsed ? 'Ausklappen' : 'Einklappen'}
           </button>
         )}
       </div>

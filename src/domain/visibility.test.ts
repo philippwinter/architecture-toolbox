@@ -97,4 +97,48 @@ describe('visibility', () => {
     expect(openedGroup?.kind === 'group' ? openedGroup.collapsed : true).toBe(false);
     expect(findInTree(searched, 'strategy')?.searchMatch).toBe(true);
   });
+
+  it('temporarily opens exactly the next capability level for capability focus', () => {
+    const parent = [...map.capabilitiesById.values()].find((capability) =>
+      capability.children.some(
+        (child) =>
+          child.kind === 'capability' &&
+          child.children.some((grandchild) => grandchild.kind === 'capability'),
+      ),
+    );
+    const child = parent?.children.find(
+      (candidate) =>
+        candidate.kind === 'capability' &&
+        candidate.children.some((grandchild) => grandchild.kind === 'capability'),
+    );
+    if (!parent || !child || child.kind !== 'capability') {
+      throw new Error('The reference map needs a capability subtree with at least three levels.');
+    }
+    const focused = computeVisibleTree(map, {
+      search: '',
+      filters: {},
+      collapsedIds: new Set([parent.id, child.id]),
+      focusTargetId: parent.id,
+    });
+
+    expect(findInTree(focused, parent.id)?.collapsed).toBe(false);
+    expect(findInTree(focused, child.id)).toBeDefined();
+    expect(findInTree(focused, child.id)?.children).toEqual([]);
+  });
+
+  it('opens a focused group and keeps contained capability subtrees collapsed', () => {
+    const focused = computeVisibleTree(map, {
+      search: '',
+      filters: {},
+      collapsedIds: new Set(['strategy']),
+      collapsedGroupIds: new Set(['enterprise-direction-group']),
+      focusTargetId: 'enterprise-direction-group',
+    });
+    const group = focused[0];
+
+    expect(group?.kind).toBe('group');
+    expect(group?.kind === 'group' ? group.collapsed : true).toBe(false);
+    expect(findInTree(focused, 'strategy')).toBeDefined();
+    expect(findInTree(focused, 'strategy')?.children).toEqual([]);
+  });
 });

@@ -170,6 +170,12 @@ test('tiles an all-collapsed horizontal group track with vertical labels', async
 });
 
 test('focuses by double click and restores the previous viewport', async ({ page }) => {
+  const breadcrumb = page.getByRole('navigation', { name: 'Fokuspfad' });
+  await expect(breadcrumb).toBeVisible();
+  await expect(
+    breadcrumb.getByRole('button', { name: 'Enterprise Capability Map', exact: true }),
+  ).toBeDisabled();
+  await expect(page.locator('[data-id="strategy-step-1"]')).toHaveCount(0);
   const viewport = page.locator('.react-flow__viewport');
   await page.waitForTimeout(500);
   await page.getByRole('button', { name: 'Zoom In' }).click();
@@ -177,10 +183,53 @@ test('focuses by double click and restores the previous viewport', async ({ page
 
   await page.getByRole('article', { name: 'Strategy', exact: true }).dblclick();
   await expect(page.getByLabel('Details zu Strategy')).toBeVisible();
+  await expect(page.locator('[data-id="strategy-step-1"]')).toBeVisible();
+  await expect(
+    breadcrumb.getByRole('button', { name: 'Strategy & Governance', exact: true }),
+  ).toBeVisible();
+  await expect(
+    breadcrumb.getByRole('button', { name: 'Enterprise Direction', exact: true }),
+  ).toBeVisible();
+  await expect(breadcrumb.getByRole('button', { name: 'Strategy', exact: true })).toBeDisabled();
   await expect(page.getByRole('article', { name: 'Customer', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Enterprise Capability Map', exact: true }).click();
+  await breadcrumb
+    .getByRole('button', { name: 'Enterprise Direction', exact: true })
+    .click();
+  await expect(
+    breadcrumb.getByRole('button', { name: 'Enterprise Direction', exact: true }),
+  ).toBeDisabled();
+  await expect(page.getByRole('article', { name: 'Strategy', exact: true })).toBeVisible();
+  await expect(page.locator('[data-id="strategy-step-1"]')).toHaveCount(0);
+  await breadcrumb
+    .getByRole('button', { name: 'Enterprise Capability Map', exact: true })
+    .click();
   await expect(page.getByRole('article', { name: 'Customer', exact: true })).toBeVisible();
   await expect.poll(() => viewport.getAttribute('style')).toBe(viewportBefore);
+});
+
+test('focuses groups without toggling their manual collapse state', async ({ page }) => {
+  const group = page.getByLabel('Gruppe Strategy & Governance', { exact: true });
+  const groupLabel = page.getByRole('button', {
+    name: 'Strategy & Governance einklappen',
+    exact: true,
+  });
+  await expect(group).not.toHaveClass(/collapsed/);
+
+  await groupLabel.dblclick();
+
+  const breadcrumb = page.getByRole('navigation', { name: 'Fokuspfad' });
+  await expect(
+    breadcrumb.getByRole('button', { name: 'Strategy & Governance', exact: true }),
+  ).toBeDisabled();
+  await expect(page.getByRole('article', { name: 'Strategy', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Gruppe Market & Customer', { exact: true })).toHaveCount(0);
+
+  await breadcrumb
+    .getByRole('button', { name: 'Enterprise Capability Map', exact: true })
+    .click();
+  await expect(page.getByLabel('Gruppe Strategy & Governance', { exact: true })).not.toHaveClass(
+    /collapsed/,
+  );
 });
 
 test('keeps the last valid preview when YAML becomes invalid', async ({ page }) => {

@@ -5,6 +5,16 @@ import {
 } from './presentation';
 
 describe('getCapabilityPresentation', () => {
+  it('uses legible shared sizes for live rendering and exports', () => {
+    expect(capabilityPresentationTokens).toMatchObject({
+      regularIconSize: 20,
+      compactIconSize: 18,
+      regularNameFontSize: 15,
+      compactNameFontSize: 12,
+      minimalNameFontSize: 10,
+    });
+  });
+
   it('keeps the icon in a compact node when its header has enough height', () => {
     expect(getCapabilityPresentation(35, false)).toEqual({
       compact: true,

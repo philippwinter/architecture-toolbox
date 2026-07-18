@@ -1,5 +1,9 @@
 import PptxGenJS from 'pptxgenjs';
 import type { IconNode } from 'lucide-react';
+import {
+  capabilityPresentationTokens,
+  groupPresentationTokens,
+} from '../domain/presentation';
 import type { BuildExportSceneOptions } from './scene';
 import type {
   ExportCapabilityElement,
@@ -252,7 +256,11 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
       height: labelRect.height,
     }, {
       objectName: `${element.id} group name`,
-      fontSize: font(element.collapsed ? 10 : 11),
+      fontSize: font(
+        element.collapsed
+          ? groupPresentationTokens.collapsedNameFontSize
+          : groupPresentationTokens.regularNameFontSize,
+      ),
       bold: true,
       color: '4C5867',
       valign: 'middle',
@@ -277,14 +285,25 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
       line: { color: renderedChevron ? '52606D' : '141E28', transparency: renderedChevron ? 44 : 79, width: 0.7 },
       rectRadius: renderedChevron ? undefined : size(cornerRadius),
     });
-    const headerHeight = element.compact ? rect.height : Math.min(47, rect.height);
+    const headerHeight = element.compact
+      ? rect.height
+      : Math.min(capabilityPresentationTokens.regularHeaderHeight, rect.height);
     const leftPadding = renderedChevron ? 25 : element.compact ? 7 : 9;
     const rightPadding = renderedChevron ? 25 : 9;
-    const iconSize = element.compact ? 14 : 17;
-    const showIcon = !element.minimal && rect.width >= leftPadding + rightPadding + iconSize + 22;
-    if (!element.compact && !renderedChevron && rect.height > 47) {
+    const iconSize = element.compact
+      ? capabilityPresentationTokens.compactIconSize
+      : capabilityPresentationTokens.regularIconSize;
+    const showIcon = !element.minimal && rect.width >= leftPadding + rightPadding + iconSize + 18;
+    if (
+      !element.compact &&
+      !renderedChevron &&
+      rect.height > capabilityPresentationTokens.regularHeaderHeight
+    ) {
       slide.addShape(presentation.ShapeType.line, {
-        x: x(rect.x), y: y(rect.y + 47), w: size(rect.width), h: 0,
+        x: x(rect.x),
+        y: y(rect.y + capabilityPresentationTokens.regularHeaderHeight),
+        w: size(rect.width),
+        h: 0,
         objectName: `${element.id} header divider`,
         line: { color: '141E28', transparency: 87, width: 0.5 },
       });
@@ -302,9 +321,15 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
         transparency,
       });
     }
-    const textX = showIcon ? iconX + iconSize + 7 : rect.x + leftPadding;
+    const textX = showIcon
+      ? iconX + iconSize + capabilityPresentationTokens.iconTextGap
+      : rect.x + leftPadding;
     const availableTextWidth = Math.max(1, rect.x + rect.width - rightPadding - textX);
-    const fontSize = element.minimal ? 9 : element.compact ? 11 : 13;
+    const fontSize = element.minimal
+      ? capabilityPresentationTokens.minimalNameFontSize
+      : element.compact
+        ? capabilityPresentationTokens.compactNameFontSize
+        : capabilityPresentationTokens.regularNameFontSize;
     const lines = wrapText(element.name, availableTextWidth, fontSize, element.nameLineCount);
     addText(lines.join('\n'), {
       x: element.minimal ? rect.x + leftPadding : textX,

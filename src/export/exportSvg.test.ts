@@ -106,7 +106,7 @@ describe('SVG export', () => {
       collapsedGroupIds: new Set(),
       filters,
       search: 'portfolio',
-      focusId: 'strategy',
+      focusTargetId: 'strategy',
     });
     const { scene, svg } = createSvgExport({
       map,

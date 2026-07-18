@@ -1,5 +1,6 @@
 import { isNode, LineCounter, parseDocument, type Document, type Node } from 'yaml';
 import { hasCapabilityIcon } from './icons';
+import { buildHierarchyIndex } from './hierarchy';
 import { capabilityMapSchema } from './schema';
 import type {
   CapabilityChildInput,
@@ -210,6 +211,7 @@ function normalizeMap(input: CapabilityMapInput): NormalizedMap {
     capabilities: capabilityRoots(rootItems),
     capabilitiesById,
     groupsById,
+    hierarchyById: buildHierarchyIndex(rootItems),
   };
 }
 

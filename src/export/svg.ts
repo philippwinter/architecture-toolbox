@@ -1,4 +1,8 @@
 import type { IconNode } from 'lucide-react';
+import {
+  capabilityPresentationTokens,
+  groupPresentationTokens,
+} from '../domain/presentation';
 import type {
   ExportCapabilityElement,
   ExportGroupElement,
@@ -92,7 +96,7 @@ function textLines(
   weight = 700,
 ): string {
   if (lines.length === 0) return '';
-  const lineHeight = fontSize * 1.2;
+  const lineHeight = fontSize * capabilityPresentationTokens.nameLineHeight;
   const firstLineCenter = centerY - ((lines.length - 1) * lineHeight) / 2;
   return `<text x="${number(x)}" y="${number(centerY)}" fill="${color}" font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="${weight}" text-anchor="${anchor}">${lines
     .map((line, index) => `<tspan x="${number(x)}" y="${number(firstLineCenter + index * lineHeight)}" dy="0.35em">${escapeXml(line)}</tspan>`)
@@ -150,19 +154,29 @@ function renderCapability(element: ExportCapabilityElement, offsetX: number, off
   const surface = renderedChevron
     ? `<polygon points="${chevronPoints(displayRect)}" fill="#52606d" fill-opacity=".56"/><polygon points="${chevronPoints(displayRect, 1)}" fill="${element.color}"/>`
     : `<rect x="${number(rect.x)}" y="${number(rect.y)}" width="${number(rect.width)}" height="${number(rect.height)}" rx="${number(cornerRadius)}" fill="${element.color}" stroke="#141e28" stroke-opacity=".21"/><path d="M ${number(rect.x + cornerRadius)} ${number(rect.y + 1)} H ${number(rect.x + rect.width - cornerRadius)}" stroke="#ffffff" stroke-opacity=".14"/>`;
-  const headerHeight = element.compact ? rect.height : Math.min(47, rect.height);
+  const headerHeight = element.compact
+    ? rect.height
+    : Math.min(capabilityPresentationTokens.regularHeaderHeight, rect.height);
   const leftPadding = renderedChevron ? 25 : element.compact ? 7 : 9;
   const rightPadding = renderedChevron ? 25 : 9;
-  const iconSize = element.compact ? 14 : 17;
-  const showIcon = !element.minimal && rect.width >= leftPadding + rightPadding + iconSize + 22;
+  const iconSize = element.compact
+    ? capabilityPresentationTokens.compactIconSize
+    : capabilityPresentationTokens.regularIconSize;
+  const showIcon = !element.minimal && rect.width >= leftPadding + rightPadding + iconSize + 18;
   const iconX = rect.x + leftPadding;
   const iconY = rect.y + (headerHeight - iconSize) / 2;
-  const textX = showIcon ? iconX + iconSize + 7 : rect.x + leftPadding;
+  const textX = showIcon
+    ? iconX + iconSize + capabilityPresentationTokens.iconTextGap
+    : rect.x + leftPadding;
   const availableTextWidth = Math.max(1, rect.x + rect.width - rightPadding - textX);
-  const fontSize = element.minimal ? 9 : element.compact ? 11 : 13;
+  const fontSize = element.minimal
+    ? capabilityPresentationTokens.minimalNameFontSize
+    : element.compact
+      ? capabilityPresentationTokens.compactNameFontSize
+      : capabilityPresentationTokens.regularNameFontSize;
   const lines = wrapText(element.name, availableTextWidth, fontSize, element.nameLineCount);
-  const headerDivider = !element.compact && !renderedChevron && rect.height > 47
-    ? `<line x1="${number(rect.x)}" y1="${number(rect.y + 47)}" x2="${number(rect.x + rect.width)}" y2="${number(rect.y + 47)}" stroke="#141e28" stroke-opacity=".13"/>`
+  const headerDivider = !element.compact && !renderedChevron && rect.height > capabilityPresentationTokens.regularHeaderHeight
+    ? `<line x1="${number(rect.x)}" y1="${number(rect.y + capabilityPresentationTokens.regularHeaderHeight)}" x2="${number(rect.x + rect.width)}" y2="${number(rect.y + capabilityPresentationTokens.regularHeaderHeight)}" stroke="#141e28" stroke-opacity=".13"/>`
     : '';
   const hidden = element.hiddenDescendantCount > 0 && rect.width >= 42 && rect.height >= 24
     ? `<g><rect x="${number(rect.x + rect.width - 35)}" y="${number(rect.y + rect.height - 20)}" width="28" height="14" rx="7" fill="#ffffff" fill-opacity=".25"/><text x="${number(rect.x + rect.width - 21)}" y="${number(rect.y + rect.height - 13)}" fill="${element.textColor}" font-family="${FONT_FAMILY}" font-size="9" font-weight="700" text-anchor="middle" dominant-baseline="middle">+${element.hiddenDescendantCount}</text></g>`
@@ -205,12 +219,24 @@ function renderGroup(element: ExportGroupElement, offsetX: number, offsetY: numb
       ? `<line x1="${number(rect.x + dividerInset)}" y1="${number(rect.y + element.labelSize)}" x2="${number(rect.x + rect.width - dividerInset)}" y2="${number(rect.y + element.labelSize)}" stroke="#465260" stroke-opacity=".13"/>`
       : `<line x1="${number(rect.x + element.labelSize)}" y1="${number(rect.y + dividerInset)}" x2="${number(rect.x + element.labelSize)}" y2="${number(rect.y + rect.height - dividerInset)}" stroke="#465260" stroke-opacity=".13"/>`;
   const label = verticalLabel
-    ? renderVerticalLabel(element.name, labelRect, '#4c5867', element.collapsed ? 10 : 11)
+    ? renderVerticalLabel(
+        element.name,
+        labelRect,
+        '#4c5867',
+        element.collapsed
+          ? groupPresentationTokens.collapsedNameFontSize
+          : groupPresentationTokens.regularNameFontSize,
+      )
     : textLines(
-        wrapText(element.name, Math.max(1, labelRect.width - 20), 11, Math.max(1, Math.floor(labelRect.height / 14))),
+        wrapText(
+          element.name,
+          Math.max(1, labelRect.width - 20),
+          groupPresentationTokens.regularNameFontSize,
+          Math.max(1, Math.floor(labelRect.height / 14)),
+        ),
         labelRect.x + 10,
         labelRect.y + labelRect.height / 2,
-        11,
+        groupPresentationTokens.regularNameFontSize,
         '#4c5867',
       );
 

@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Layers3 } from 'lucide-react';
 import { memo } from 'react';
 import type { Node, NodeProps } from '@xyflow/react';
+import { capabilityPresentationTokens } from '../domain/presentation';
 import type { NormalizedCapability } from '../domain/types';
 import { CapabilityIcon } from './CapabilityIcon';
 
@@ -14,6 +15,7 @@ export interface CapabilityNodeData extends Record<string, unknown> {
   nameLineCount: number;
   hiddenDescendantCount: number;
   hasChildren: boolean;
+  focusExpanded: boolean;
   chevronContinues: boolean;
   onToggle: (id: string) => void;
   onFocus: (id: string) => void;
@@ -46,6 +48,14 @@ export const CapabilityNode = memo(function CapabilityNode({
     capability.shape === 'chevron' && capability.layout.direction === 'vertical'
       ? 'chevron'
       : 'box';
+  const iconSize = compact
+    ? capabilityPresentationTokens.compactIconSize
+    : capabilityPresentationTokens.regularIconSize;
+  const nameFontSize = minimal
+    ? capabilityPresentationTokens.minimalNameFontSize
+    : compact
+      ? capabilityPresentationTokens.compactNameFontSize
+      : capabilityPresentationTokens.regularNameFontSize;
   const stop = (event: React.MouseEvent) => event.stopPropagation();
 
   return (
@@ -70,17 +80,28 @@ export const CapabilityNode = memo(function CapabilityNode({
       }}
     >
       <div className="capability-node__surface">
-        <header className="capability-node__header">
+        <header
+          className="capability-node__header"
+          style={{ gap: capabilityPresentationTokens.iconTextGap }}
+        >
           {!minimal && (
             <CapabilityIcon
               name={capability.icon}
               className="capability-node__icon"
-              size={compact ? 14 : 17}
+              size={iconSize}
             />
           )}
-          <strong style={{ WebkitLineClamp: data.nameLineCount }}>{capability.name}</strong>
+          <strong
+            style={{
+              WebkitLineClamp: data.nameLineCount,
+              fontSize: nameFontSize,
+              lineHeight: capabilityPresentationTokens.nameLineHeight,
+            }}
+          >
+            {capability.name}
+          </strong>
           <span className="capability-node__actions">
-            {hasChildren && (
+            {hasChildren && !data.focusExpanded && (
               <button
                 type="button"
                 title={collapsed ? 'Kinder einblenden' : 'Kinder ausblenden'}

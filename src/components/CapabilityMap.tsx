@@ -20,9 +20,8 @@ import { CapabilityNode, type CapabilityFlowNode } from './CapabilityNode';
 interface CapabilityMapProps {
   roots: VisibleRootItem[];
   mapKey: string;
-  focusId?: string;
+  focusTargetId?: string;
   fitVersion: number;
-  collapsedIds: Set<string>;
   selectedId?: string;
   onSelect: (id?: string) => void;
   onToggle: (id: string) => void;
@@ -40,9 +39,8 @@ const nodeTypes = {
 function MapCanvas({
   roots,
   mapKey,
-  focusId,
+  focusTargetId,
   fitVersion,
-  collapsedIds,
   selectedId,
   onSelect,
   onToggle,
@@ -111,6 +109,7 @@ function MapCanvas({
             labelSize: layoutNode.labelSize,
             collapsedTrackFill: layoutNode.collapsedTrackFill,
             onToggle: handleToggleGroup,
+            onFocus,
           },
         };
       }
@@ -136,19 +135,20 @@ function MapCanvas({
           capability: item.capability,
           contextOnly: item.contextOnly,
           searchMatch: item.searchMatch,
-          collapsed: collapsedIds.has(item.capability.id),
+          collapsed: item.collapsed,
           compact: presentation.compact,
           minimal: presentation.minimal,
           nameLineCount: presentation.nameLineCount,
           hiddenDescendantCount: layoutNode.hiddenDescendantCount,
           hasChildren: item.capability.children.some((child) => child.kind === 'capability'),
+          focusExpanded: item.capability.id === focusTargetId,
           chevronContinues: layoutNode.chevronContinues,
           onToggle: handleToggle,
           onFocus,
         },
       };
     });
-  }, [collapsedIds, handleToggle, handleToggleGroup, onFocus, roots, selectedId]);
+  }, [focusTargetId, handleToggle, handleToggleGroup, onFocus, roots, selectedId]);
   const rootNodesForFit = useMemo(() => nodes.filter((node) => !node.parentId), [nodes]);
 
   const fitRootView = useCallback(
@@ -215,19 +215,19 @@ function MapCanvas({
     const previousFocusId = previousFocusIdRef.current;
     const mapChanged = previousMapKey === undefined || previousMapKey !== mapKey;
     const fitRequested = previousFitVersion !== undefined && previousFitVersion !== fitVersion;
-    const focusChanged = previousFocusId !== focusId;
+    const focusChanged = previousFocusId !== focusTargetId;
 
     const timeout = window.setTimeout(() => {
       previousMapKeyRef.current = mapKey;
       previousFitVersionRef.current = fitVersion;
-      previousFocusIdRef.current = focusId;
+      previousFocusIdRef.current = focusTargetId;
       if (mapChanged || fitRequested) {
         rootViewportRef.current = undefined;
         fitRootView();
         return;
       }
       if (!focusChanged) return;
-      if (focusId) {
+      if (focusTargetId) {
         if (!previousFocusId) rootViewportRef.current = getViewport();
         fitRootView(180, 0.08);
       } else if (rootViewportRef.current) {
@@ -236,7 +236,7 @@ function MapCanvas({
       }
     }, 100);
     return () => window.clearTimeout(timeout);
-  }, [fitRootView, fitVersion, focusId, getViewport, mapKey, setViewport]);
+  }, [fitRootView, fitVersion, focusTargetId, getViewport, mapKey, setViewport]);
 
   const handleNodeClick: NodeMouseHandler<MapFlowNode> = (_event, node) => {
     if (node.type === 'capability') onSelect(node.id);

@@ -32,6 +32,14 @@ describe('parseCapabilityDocument', () => {
       icon: 'Scale',
       layout: { direction: 'horizontal' },
     });
+    expect(result.value.hierarchyById.get('strategy')).toEqual({
+      kind: 'capability',
+      id: 'strategy',
+      name: 'Strategy',
+      parentId: 'enterprise-direction-group',
+      path: ['strategy-governance-group', 'enterprise-direction-group', 'strategy'],
+      pathNames: ['Strategy & Governance', 'Enterprise Direction', 'Strategy'],
+    });
   });
 
   it('reports duplicate ids with a source location', () => {

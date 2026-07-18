@@ -70,7 +70,7 @@ export default function App() {
   const { result, lastValidMap, isPending, isStale } = useCapabilityDocument(source);
   const [viewState, setViewState] = useState(() => initialViewState(lastValidMap));
   const [selectedId, setSelectedId] = useState<string>();
-  const [focusId, setFocusId] = useState<string>();
+  const [focusTargetId, setFocusTargetId] = useState<string>();
   const [fitVersion, setFitVersion] = useState(0);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<FilterSelection>({});
@@ -106,8 +106,10 @@ export default function App() {
   );
   const effectiveSelectedId =
     selectedId && lastValidMap.capabilitiesById.has(selectedId) ? selectedId : undefined;
-  const effectiveFocusId =
-    focusId && lastValidMap.capabilitiesById.has(focusId) ? focusId : undefined;
+  const effectiveFocusTargetId =
+    focusTargetId && lastValidMap.hierarchyById.has(focusTargetId)
+      ? focusTargetId
+      : undefined;
 
   useEffect(() => {
     if (viewState.signature !== currentMapSignature) return;
@@ -125,12 +127,12 @@ export default function App() {
         filters,
         collapsedIds: effectiveCollapsedIds,
         collapsedGroupIds: effectiveCollapsedGroupIds,
-        focusId: effectiveFocusId,
+        focusTargetId: effectiveFocusTargetId,
       }),
     [
       effectiveCollapsedGroupIds,
       effectiveCollapsedIds,
-      effectiveFocusId,
+      effectiveFocusTargetId,
       filters,
       lastValidMap,
       search,
@@ -139,9 +141,13 @@ export default function App() {
   const selectedCapability = effectiveSelectedId
     ? lastValidMap.capabilitiesById.get(effectiveSelectedId)
     : undefined;
-  const focusedCapability = effectiveFocusId
-    ? lastValidMap.capabilitiesById.get(effectiveFocusId)
+  const focusedHierarchyEntry = effectiveFocusTargetId
+    ? lastValidMap.hierarchyById.get(effectiveFocusTargetId)
     : undefined;
+  const focusPathEntries = focusedHierarchyEntry?.path.flatMap((id) => {
+    const entry = lastValidMap.hierarchyById.get(id);
+    return entry ? [entry] : [];
+  }) ?? [];
 
   const exportMap = useCallback(async (format: ExportFormat) => {
     if (
@@ -162,7 +168,9 @@ export default function App() {
         filters,
         filterOptions,
         search,
-        focusPath: focusedCapability?.pathNames,
+        focusPath: effectiveFocusTargetId
+          ? lastValidMap.hierarchyById.get(effectiveFocusTargetId)?.pathNames
+          : undefined,
       };
       if (format === 'svg') {
         const { filename, svg } = createSvgExport(options);
@@ -188,7 +196,7 @@ export default function App() {
   }, [
     filterOptions,
     filters,
-    focusedCapability,
+    effectiveFocusTargetId,
     isStale,
     lastValidMap,
     search,
@@ -246,16 +254,18 @@ export default function App() {
       collapsedGroupIds: new Set(),
     }));
     setSelectedId(undefined);
-    setFocusId(undefined);
+    setFocusTargetId(undefined);
     setFitVersion((version) => version + 1);
     setSearch('');
     setFilters({});
   };
 
-  const focusCapability = useCallback((id: string) => {
-    setFocusId(id);
-    setSelectedId(id);
-  }, []);
+  const focusElement = useCallback((id: string) => {
+    const entry = lastValidMap.hierarchyById.get(id);
+    if (!entry) return;
+    setFocusTargetId(id);
+    setSelectedId(entry.kind === 'capability' ? id : undefined);
+  }, [lastValidMap]);
 
   return (
     <main className="app-shell">
@@ -362,34 +372,45 @@ export default function App() {
             </div>
           </div>
 
-          {focusedCapability && (
-            <div className="focus-breadcrumb">
-              <button type="button" onClick={() => setFocusId(undefined)}>{lastValidMap.name}</button>
-              {focusedCapability.pathNames.map((name, index) => {
-                const id = focusedCapability.path[index];
-                return (
-                  <span key={id}>
-                    <ChevronRight size={13} />
-                    <button type="button" onClick={() => setFocusId(id)}>{name}</button>
-                  </span>
-                );
-              })}
-            </div>
-          )}
+          <nav className="focus-breadcrumb" aria-label="Fokuspfad">
+            <button
+              type="button"
+              disabled={!focusedHierarchyEntry}
+              aria-current={!focusedHierarchyEntry ? 'page' : undefined}
+              onClick={() => setFocusTargetId(undefined)}
+            >
+              {lastValidMap.name}
+            </button>
+            {focusPathEntries.map((entry) => {
+              const current = entry.id === effectiveFocusTargetId;
+              return (
+                <span key={entry.id}>
+                  <ChevronRight size={13} />
+                  <button
+                    type="button"
+                    disabled={current}
+                    aria-current={current ? 'page' : undefined}
+                    onClick={() => focusElement(entry.id)}
+                  >
+                    {entry.name}
+                  </button>
+                </span>
+              );
+            })}
+          </nav>
 
           <div className="map-canvas">
             <Suspense fallback={<div className="panel-loading">Map wird geladen …</div>}>
               <CapabilityMap
                 roots={visibleTree}
                 mapKey={currentMapSignature}
-                focusId={effectiveFocusId}
+                focusTargetId={effectiveFocusTargetId}
                 fitVersion={fitVersion}
-                collapsedIds={effectiveCollapsedIds}
                 selectedId={effectiveSelectedId}
                 onSelect={setSelectedId}
                 onToggle={toggleCollapsed}
                 onToggleGroup={toggleCollapsedGroup}
-                onFocus={focusCapability}
+                onFocus={focusElement}
               />
             </Suspense>
           </div>
@@ -399,6 +420,7 @@ export default function App() {
           <DetailPanel
             capability={selectedCapability}
             collapsed={effectiveCollapsedIds.has(selectedCapability.id)}
+            focusExpanded={selectedCapability.id === effectiveFocusTargetId}
             onClose={() => setSelectedId(undefined)}
             onToggle={toggleCollapsed}
           />

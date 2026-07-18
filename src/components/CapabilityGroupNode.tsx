@@ -1,5 +1,6 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import type { Node, NodeProps } from '@xyflow/react';
+import { groupPresentationTokens } from '../domain/presentation';
 import type { NormalizedCapabilityGroup } from '../domain/types';
 
 export interface CapabilityGroupNodeData extends Record<string, unknown> {
@@ -9,6 +10,7 @@ export interface CapabilityGroupNodeData extends Record<string, unknown> {
   labelSize: number;
   collapsedTrackFill: boolean;
   onToggle: (id: string) => void;
+  onFocus: (id: string) => void;
 }
 
 export type CapabilityGroupFlowNode = Node<CapabilityGroupNodeData, 'capabilityGroup'>;
@@ -19,6 +21,27 @@ export const CapabilityGroupNode = memo(function CapabilityGroupNode({
   const { group, collapsed, autoCollapsed } = data;
   const vertical = group.layout.direction === 'vertical';
   const actionLabel = collapsed ? `${group.name} ausklappen` : `${group.name} einklappen`;
+  const toggleTimerRef = useRef<number | undefined>(undefined);
+  const cancelPendingToggle = () => {
+    if (toggleTimerRef.current === undefined) return;
+    window.clearTimeout(toggleTimerRef.current);
+    toggleTimerRef.current = undefined;
+  };
+
+  useEffect(
+    () => () => {
+      if (toggleTimerRef.current !== undefined) {
+        window.clearTimeout(toggleTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const focusGroup = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    cancelPendingToggle();
+    data.onFocus(group.id);
+  };
 
   return (
     <section
@@ -35,6 +58,7 @@ export const CapabilityGroupNode = memo(function CapabilityGroupNode({
       }
       aria-label={`Gruppe ${group.name}`}
       title={collapsed ? group.name : undefined}
+      onDoubleClickCapture={focusGroup}
     >
       <button
         type="button"
@@ -43,10 +67,23 @@ export const CapabilityGroupNode = memo(function CapabilityGroupNode({
         title={autoCollapsed ? 'Keine Treffer in dieser Gruppe' : actionLabel}
         onClick={(event) => {
           event.stopPropagation();
-          data.onToggle(group.id);
+          cancelPendingToggle();
+          if (event.detail > 1) return;
+          toggleTimerRef.current = window.setTimeout(() => {
+            toggleTimerRef.current = undefined;
+            data.onToggle(group.id);
+          }, 220);
         }}
       >
-        <strong>{group.name}</strong>
+        <strong
+          style={{
+            fontSize: collapsed
+              ? groupPresentationTokens.collapsedNameFontSize
+              : groupPresentationTokens.regularNameFontSize,
+          }}
+        >
+          {group.name}
+        </strong>
       </button>
     </section>
   );

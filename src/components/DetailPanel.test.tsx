@@ -34,4 +34,18 @@ describe('DetailPanel', () => {
     expect(onToggle).toHaveBeenCalledWith('customer');
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  it('communicates the temporary expansion while the capability is focused', () => {
+    render(
+      <DetailPanel
+        capability={customer}
+        collapsed
+        focusExpanded
+        onClose={vi.fn()}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Im Fokus geöffnet' })).toBeDisabled();
+  });
 });

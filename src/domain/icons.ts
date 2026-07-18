@@ -1,4 +1,4 @@
-import { CircleHelp, icons, type LucideIcon } from 'lucide-react';
+import { CircleHelp, icons, type IconNode, type LucideIcon } from 'lucide-react';
 
 function normalizeIconName(name: string): string {
   return name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -44,4 +44,20 @@ export function hasCapabilityIcon(name: string): boolean {
 
 export function getCapabilityIcon(name?: string): LucideIcon {
   return (name && iconByNormalizedName.get(normalizeIconName(name))) || CircleHelp;
+}
+
+interface LucideIconWithNode extends LucideIcon {
+  render?: (
+    props: Record<string, unknown>,
+    ref: null,
+  ) => { props?: { iconNode?: IconNode } };
+}
+
+/**
+ * Returns Lucide's framework-neutral SVG primitives for use by non-React
+ * renderers such as the export pipeline.
+ */
+export function getCapabilityIconNode(name?: string): IconNode {
+  const icon = getCapabilityIcon(name) as LucideIconWithNode;
+  return icon.render?.({}, null)?.props?.iconNode ?? [];
 }

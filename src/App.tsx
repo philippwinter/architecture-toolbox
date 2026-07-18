@@ -1,4 +1,4 @@
-import { ChevronRight, Code2, Layers3, Map, RotateCcw, Search, X } from 'lucide-react';
+import { ChevronRight, Code2, Download, Layers3, Map, RotateCcw, Search, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   collapsedIdsForProfile,
@@ -28,6 +28,7 @@ import {
 import { DetailPanel } from './components/DetailPanel';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { FilterMenu } from './components/FilterMenu';
+import { createSvgExport, downloadSvg } from './export/exportSvg';
 
 const CapabilityMap = lazy(() =>
   import('./components/CapabilityMap').then((module) => ({ default: module.CapabilityMap })),
@@ -72,6 +73,7 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<FilterSelection>({});
   const [tabletView, setTabletView] = useState<'editor' | 'map'>('map');
+  const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'done' | 'error'>('idle');
   const diagnostics = result.diagnostics;
   const currentMapSignature = useMemo(() => mapStructureSignature(lastValidMap), [lastValidMap]);
 
@@ -135,6 +137,44 @@ export default function App() {
   const focusedCapability = effectiveFocusId
     ? lastValidMap.capabilitiesById.get(effectiveFocusId)
     : undefined;
+
+  const exportAsSvg = useCallback(async () => {
+    if (
+      isStale &&
+      !window.confirm(
+        'Die YAML-Datei ist nicht gültig. Die letzte gültige Vorschau als SVG exportieren?',
+      )
+    ) {
+      return;
+    }
+    setExportStatus('exporting');
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    try {
+      const { filename, svg } = createSvgExport({
+        map: lastValidMap,
+        roots: visibleTree,
+        profile: viewState.profile,
+        filters,
+        filterOptions,
+        search,
+        focusPath: focusedCapability?.pathNames,
+      });
+      downloadSvg(filename, svg);
+      setExportStatus('done');
+    } catch (error) {
+      console.error('SVG-Export fehlgeschlagen', error);
+      setExportStatus('error');
+    }
+  }, [
+    filterOptions,
+    filters,
+    focusedCapability,
+    isStale,
+    lastValidMap,
+    search,
+    viewState.profile,
+    visibleTree,
+  ]);
 
   const toggleCollapsed = useCallback((id: string) => {
     setViewState((current) => {
@@ -241,6 +281,15 @@ export default function App() {
             </select>
           </label>
           <FilterMenu options={filterOptions} selection={filters} onChange={setFilters} />
+          <button
+            type="button"
+            className="toolbar-button"
+            disabled={exportStatus === 'exporting' || visibleTree.length === 0}
+            onClick={() => void exportAsSvg()}
+            aria-label="SVG exportieren"
+          >
+            <Download size={16} /> {exportStatus === 'exporting' ? 'Export …' : 'SVG'}
+          </button>
           <button type="button" className="toolbar-button" onClick={reset}>
             <RotateCcw size={16} /> Beispiel
           </button>
@@ -286,6 +335,10 @@ export default function App() {
             <div className="map-meta">
               <span>{lastValidMap.capabilitiesById.size} Capabilities</span>
               {isStale && <span className="stale-badge">Nicht aktuell</span>}
+              {exportStatus === 'done' && <span className="export-feedback">SVG erstellt</span>}
+              {exportStatus === 'error' && (
+                <span className="export-feedback error" role="alert">Export fehlgeschlagen</span>
+              )}
             </div>
           </div>
 

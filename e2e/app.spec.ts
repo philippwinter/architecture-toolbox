@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -163,6 +164,54 @@ test('keeps the last valid preview when YAML becomes invalid', async ({ page }) 
   await expect(page.getByText('Vorschau nicht aktuell')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Enterprise Capability Map' })).toBeVisible();
   await expect(page.getByText('Problem')).toBeVisible();
+});
+
+test('downloads the current capability map as a self-contained SVG', async ({ page }) => {
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'SVG exportieren' }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  const svg = await readFile(downloadPath, 'utf8');
+
+  expect(download.suggestedFilename()).toMatch(
+    /^enterprise-capabilities-level-1-\d{8}-\d{6}\.svg$/,
+  );
+  expect(svg).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
+  expect(svg).toContain('Enterprise Capability Map');
+  expect(svg).toContain('data-id="corporate-development"');
+  expect(svg).not.toContain('<foreignObject');
+  expect(svg).not.toMatch(/(?:href|src)=["'](?:https?:|\/\/)/);
+  await expect(page.getByText('SVG erstellt')).toBeVisible();
+});
+
+test('keeps SVG capability icons and text vertically centered across renderers', async ({ page }) => {
+  await page.getByRole('combobox', { name: 'Ansichtstiefe' }).selectOption('level-2');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'SVG exportieren' }).click();
+  const download = await downloadPromise;
+  const svg = await readFile(await download.path(), 'utf8');
+  await page.setContent(svg);
+
+  const alignment = await page.locator('[data-id="strategy"]').evaluate((capability) => {
+    const surface = capability.querySelector(':scope > rect');
+    const icon = capability.querySelector(':scope > g[transform]');
+    const text = capability.querySelector(':scope > text');
+    if (!surface || !icon || !text) throw new Error('SVG capability presentation is incomplete');
+    const surfaceRect = surface.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
+    const textRect = text.getBoundingClientRect();
+    const headerCenter = surfaceRect.top + 47 / 2;
+    return {
+      iconDelta: iconRect.top + iconRect.height / 2 - headerCenter,
+      textDelta: textRect.top + textRect.height / 2 - headerCenter,
+      pairDelta:
+        textRect.top + textRect.height / 2 - (iconRect.top + iconRect.height / 2),
+    };
+  });
+
+  expect(Math.abs(alignment.iconDelta)).toBeLessThan(1);
+  expect(Math.abs(alignment.textDelta)).toBeLessThan(1);
+  expect(Math.abs(alignment.pairDelta)).toBeLessThan(1);
 });
 
 test('switches between map and editor at tablet width', async ({ page }) => {

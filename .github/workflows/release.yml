@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "24"
+  NPM_VERSION: "11.16.0"
+  VITE_BASE_PATH: /architecture-toolbox/capability-map-studio/
+
+jobs:
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use pinned npm
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e "const p = require('./package.json'); if ('v' + p.version !== process.env.RELEASE_TAG) { throw new Error('Tag und package.json stimmen nicht überein.'); }"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate source
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test
+
+      - name: Build release artifacts
+        run: |
+          npm run build:standalone
+          npm run verify:standalone
+          npm run build:pages
+          npm run verify:pages
+
+      - name: Package release artifacts
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p .release
+          VERSION="${RELEASE_TAG#v}"
+          (cd dist-pages && zip -q -r "../.release/architecture-toolbox-v${VERSION}-pages.zip" .)
+          cp tools/capability-map-studio/dist-standalone/index.html ".release/capability-map-studio-v${VERSION}-standalone.html"
+          (cd .release && sha256sum architecture-toolbox-v*-pages.zip capability-map-studio-v*-standalone.html > SHA256SUMS)
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "${RELEASE_TAG}" .release/* --verify-tag --generate-notes --title "Architecture Toolbox ${RELEASE_TAG}"

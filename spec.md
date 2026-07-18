@@ -1,8 +1,8 @@
 # Capability Map Renderer – Spezifikation
 
-Status: Erweiterungsspezifikation v0.7 (umsetzungsreif)
+Status: Erweiterungsspezifikation v0.9 (geplant)
 Stand: 18. Juli 2026
-Ziel: Umsetzungsreife Spezifikation für die schrittweise Export-Erweiterung auf Basis des bestehenden Renderers
+Ziel: Umsetzungsreife Spezifikation für Fokus, Hierarchienavigation und Export auf Basis des bestehenden Renderers
 
 ## 1. Produktvision
 
@@ -18,7 +18,7 @@ Das MVP muss:
 2. die zuletzt gültige Eingabe unmittelbar als verschachtelte Capability Map darstellen.
 3. beliebig tiefe, rekursive Capability-Strukturen im Datenmodell unterstützen.
 4. ein gemischtes, rekursives Layout aus horizontal gestapelten Elementen, vertikalen Säulen und expliziten horizontalen beziehungsweise vertikalen Flushes unterstützen.
-5. Capabilities ein- und ausklappen, suchen, anhand von Metadaten filtern und als Teilbaum fokussieren können.
+5. Capabilities ein- und ausklappen, suchen, anhand von Metadaten filtern sowie Capabilities und Gruppen als Teilbaum fokussieren können.
 6. Details der ausgewählten Capability in einem separaten Panel darstellen.
 7. Darstellungswerte vererben und fehlende Werte sinnvoll vorbelegen.
 8. den aktuellen YAML-Inhalt lokal im Browser speichern und wiederherstellen.
@@ -30,7 +30,7 @@ Das MVP muss:
 14. Beschreibungen ausschließlich im Detailpanel und nicht innerhalb der Capability Map anzeigen.
 15. Capabilities wahlweise als rechteckige Box oder als Chevron einer Wertstromdarstellung rendern.
 16. fehlende `trackWeight`- und `layerWeight`-Werte anhand des rekursiv berechneten Platzbedarfs automatisch bestimmen.
-17. den Fokusmodus per Doppelklick ohne explizite Fokus-Schaltfläche aktivieren.
+17. den Fokusmodus für Capabilities und Gruppen per Doppelklick ohne explizite Fokus-Schaltfläche aktivieren und den aktuellen Hierarchiepfad dauerhaft als Breadcrumb anzeigen.
 18. eine reproduzierbare komplexe Referenzmap mit ungefähr 500 Capabilities und bis zu vier Capability-Ebenen für Funktions-, Layout- und Performanceprüfungen bereitstellen.
 
 ## 3. Nicht-Ziele des MVP
@@ -62,7 +62,7 @@ Primärer Ablauf:
 3. Nach einer kurzen Eingabepause wird das Dokument syntaktisch, strukturell und semantisch validiert.
 4. Bei gültiger Eingabe aktualisiert sich die Map.
 5. Bei ungültiger Eingabe bleiben die letzte gültige Map und ihr Interaktionszustand erhalten; die Vorschau wird als nicht aktuell gekennzeichnet.
-6. Die Person sucht, filtert, klappt Capabilities ein oder aus, fokussiert einen Teilbaum per Doppelklick und betrachtet Details.
+6. Die Person sucht, filtert, klappt Capabilities ein oder aus, fokussiert eine Capability oder Gruppe per Doppelklick, navigiert über den dauerhaft sichtbaren Breadcrumb-Pfad und betrachtet Capability-Details.
 7. Die Person exportiert die aktuell erzeugte Darstellung lokal in einem unterstützten Ausgabeformat.
 
 ## 5. Bedienoberfläche
@@ -74,9 +74,10 @@ Die Standardansicht besteht aus:
 - einer Kopfzeile mit Suche, Filter, Ansichtssteuerung, Zurücksetzen und Status;
 - einem links angeordneten, in der Breite veränderbaren YAML-Editor;
 - einer zentralen Map-Fläche;
+- einer dauerhaft sichtbaren Breadcrumb-Navigation oberhalb der Map-Fläche;
 - einem bei Auswahl eingeblendeten Detailpanel rechts neben der Map.
 
-Das Detailpanel darf die Map-Fläche verkleinern, muss aber schließbar sein. Reine Detailauswahl, Suche, Filter sowie Ein- und Ausklappen dürfen Zoom und Position nicht automatisch zurücksetzen. Ein vollständiges `fitView` erfolgt nur beim initialen Laden, nach „Auf Beispiel zurücksetzen“, auf die explizite Aktion „Ansicht einpassen“ und beim Eintritt in einen Fokusmodus.
+Das Detailpanel darf die Map-Fläche verkleinern, muss aber schließbar sein. Reine Detailauswahl, Suche, Filter sowie Ein- und Ausklappen dürfen Zoom und Position nicht automatisch zurücksetzen. Ein vollständiges `fitView` erfolgt nur beim initialen Laden, nach „Auf Beispiel zurücksetzen“, auf die explizite Aktion „Ansicht einpassen“ sowie beim Eintritt in den Fokusmodus oder beim Wechsel des Fokusziels.
 
 ### 5.2 Tablet
 
@@ -94,9 +95,10 @@ Die Map bietet:
 - Auswahl einer Capability per einfachem Klick;
 - Ein- und Ausklappen einer Capability mit Kindern;
 - Fokus auf eine Capability als temporäre Wurzel per Doppelklick auf ihre Box beziehungsweise ihren Chevron;
+- Fokus auf eine Gruppe als temporäre Wurzel per Doppelklick auf ihre Gruppenfläche oder Beschriftung;
 - Rückkehr zur übergeordneten beziehungsweise vollständigen Map.
 
-Eine separate Fokus-Schaltfläche wird weder auf der Capability noch im Detailpanel angezeigt. Kacheln und Chevrons sind nicht frei verschiebbar und nicht direkt skalierbar.
+Die Breadcrumb-Navigation ist auch ohne aktiven Fokus sichtbar. Sie beginnt stets mit der Map-Wurzel, zeigt bei aktivem Fokus den vollständigen strukturellen Pfad einschließlich aller enthaltenen Gruppen und Capabilities und erlaubt die direkte Navigation zu jedem fokussierbaren Ahnen. Eine separate Fokus-Schaltfläche wird weder auf Capabilities, Gruppen noch im Detailpanel angezeigt. Kacheln, Chevrons und Gruppen sind nicht frei verschiebbar und nicht direkt skalierbar.
 
 ## 6. YAML-Datenmodell
 
@@ -380,7 +382,8 @@ Ein `vertical`-Flush beginnt dagegen ein neues Band unterhalb des bisherigen Lay
 - Beschreibungen werden unabhängig vom verfügbaren Platz niemals in der Map gerendert.
 - Nicht-Blatt-Capabilities und Gruppen besitzen Mindestmaße für sinnvoll darstellbare Inhalte.
 - Bei abnehmendem Platz verschwinden in dieser Reihenfolge: Metadaten-Vorschau, Icon.
-- Die Icon-Sichtbarkeit richtet sich nach der tatsächlich nutzbaren Höhe des kompakten Headers, nicht nach dem bevorzugten Platzbedarf einer Blatt-Capability. Das 14-px-Icon bleibt ab 28 px interner Boxhöhe sichtbar und entfällt erst darunter.
+- Die Icon-Sichtbarkeit richtet sich nach der tatsächlich nutzbaren Höhe des kompakten Headers, nicht nach dem bevorzugten Platzbedarf einer Blatt-Capability. Das 18-px-Icon bleibt ab 28 px interner Boxhöhe sichtbar und entfällt erst darunter; reguläre Header verwenden 20-px-Icons.
+- Capability-Namen verwenden gut lesbare, zentral definierte Größen von 15 px in regulären, 12 px in kompakten und 10 px in minimalen Boxen. Gruppenbeschriftungen verwenden 12 px beziehungsweise 11 px im eingeklappten Zustand. Live-Map, SVG, PNG, PDF und PPTX nutzen dieselben relativen Präsentationswerte.
 - Capability-Namen dürfen abhängig von der tatsächlich nutzbaren Headerhöhe über mehrere Zeilen umbrechen. Sehr flache Boxen bleiben einzeilig; reguläre Header unterstützen bis zu zwei und ausreichend hohe kompakte Boxen bis zu drei Zeilen.
 - Name und Zustandsindikatoren bleiben möglichst lange sichtbar.
 - Ausgeklappte sichtbare Kinder behalten auch bei knappem Platz ihre Layout-Slots. Der semantische Zoom reduziert zunächst deren innere Inhalte und Zustandsdetails, nicht jedoch die fachlichen Elemente selbst.
@@ -403,7 +406,7 @@ Die konkreten Mindestgrößen werden in der Implementierung als zentrale Design-
 - Besteht ein gestapelter horizontaler Track ausschließlich aus eingeklappten horizontalen Gruppen, bleibt er ebenfalls auf die schmale Platzhalterbreite reduziert. Seine Gruppen teilen sich jedoch proportional zu ihren effektiven `layerWeight`-Werten die vollständige verfügbare Track-Höhe. Ohne explizite Gewichte erfolgt die Aufteilung automatisch; bei gleichem Bedarf gleichmäßig. Die Namen aller Gruppen werden in diesem Sonderfall vollständig, ohne Umbruch und vertikal dargestellt.
 - Der Gruppenname wird stets vollständig und ohne Ellipse dargestellt. Der reservierte Namensbereich wächst bei Bedarf; in einer eingeklappten vertikalen Gruppe wird der Name platzsparend vertikal gesetzt.
 - Im eingeklappten Zustand dient der gesamte farbige Platzhalter samt Gruppenname als Aufklappfläche mit technischem Tooltip beziehungsweise zugänglichem Namen; ein eigener sichtbarer Button oder ein Chevron wird nicht gerendert.
-- Gruppen sind nicht auswählbar, nicht fokussierbar und öffnen kein Detailpanel.
+- Gruppen sind nicht als fachliche Detailobjekte auswählbar und öffnen kein Detailpanel. Sie sind jedoch per Doppelklick als temporäre Wurzel fokussierbar.
 
 ## 8. Darstellungsregeln
 
@@ -475,7 +478,17 @@ Beim Ein- oder Ausklappen bleibt das betätigte Element als visueller Anker an d
 
 ### 9.4 Fokusmodus
 
-Ein Doppelklick auf eine Capability-Box oder einen Capability-Chevron behandelt diese Capability temporär als Wurzel. Der Doppelklick darf weder den Collapse-Zustand verändern noch eine gesonderte Fokus-Schaltfläche erfordern. Beim Eintritt wird der bisherige Viewport gespeichert und der fokussierte Teilbaum einmalig eingepasst. Eine Breadcrumb-Navigation zeigt den Pfad zur tatsächlichen Wurzel und ermöglicht schrittweise Rückkehr; beim Verlassen des Fokusmodus wird der vorherige Viewport wiederhergestellt. Suche und Filter bleiben im Fokusmodus aktiv. Gruppen und Flushes können nicht fokussiert werden.
+Ein Doppelklick auf eine Capability-Box, einen Capability-Chevron oder eine Gruppenfläche behandelt das gewählte Element temporär als Wurzel. Gruppen beider zulässigen Gruppenebenen sind fokussierbar; Flushes bleiben rein strukturell und können nicht fokussiert werden. Der Doppelklick erfordert keine gesonderte Fokus-Schaltfläche.
+
+Beim Fokus auf eine Capability wird diese unabhängig von Ansichtsprofil und manuellem Collapse-Zustand temporär geöffnet, sodass ihre direkten Capability-Kinder als genau nächste Capability-Ebene sichtbar werden. Die direkten Kinder selbst werden nicht automatisch geöffnet; tiefere Ebenen folgen wieder dem aktiven Ansichtsprofil, dem manuellen Collapse-Zustand sowie Suche und Filtern. Bei einer Blatt-Capability entsteht kein zusätzlicher Leerraum. Beim Fokus auf eine Gruppe wird die Gruppe selbst einschließlich notwendiger Gruppenahnen temporär geöffnet und ihre direkten Inhalte werden sichtbar. Direkt enthaltene Capabilities werden dabei nicht ihrerseits automatisch geöffnet; ihre Kinder folgen weiterhin dem aktiven Ansichtsprofil, dem manuellen Collapse-Zustand sowie Suche und Filtern.
+
+Diese Fokusöffnungen sind ausschließlich abgeleitete, flüchtige Sichtbarkeits-Overrides. Sie verändern weder die manuell eingeklappten Capability- und Gruppen-IDs noch das gewählte Ansichtsprofil oder die in `localStorage` gespeicherten Werte. Beim Wechsel des Fokusziels oder beim Verlassen des Fokusmodus entfallen die Overrides, und der vorherige effektive Collapse-Zustand gilt wieder. Die automatische Fokusöffnung darf deshalb nicht als manuelle Änderung persistiert oder in YAML beziehungsweise Exportmetadaten geschrieben werden.
+
+Beim Eintritt in den Fokusmodus wird der bisherige Viewport gespeichert und der fokussierte Teilbaum einmalig eingepasst. Die dauerhaft sichtbare Breadcrumb-Navigation beginnt mit der Map-Wurzel und zeigt anschließend den vollständigen strukturellen Pfad zum Fokusziel. Darin werden Gruppen der ersten und zweiten Ebene sowie Capability-Ahnen in ihrer tatsächlichen Reihenfolge dargestellt. Ein Klick auf einen fokussierbaren Breadcrumb setzt dieses Element als neues Fokusziel; ein Klick auf die Map-Wurzel beendet den Fokusmodus. Beim vollständigen Verlassen wird der vor Eintritt gespeicherte Viewport wiederhergestellt. Die reine Navigation zwischen fokussierten Ahnen passt den neuen Teilbaum einmalig ein, überschreibt aber nicht den ursprünglich gespeicherten Rückkehr-Viewport.
+
+Ohne aktiven Fokus zeigt der Breadcrumb ausschließlich die Map-Wurzel als aktuellen, nicht erneut auslösbaren Eintrag. Bei schmalem Platz bleibt der aktuelle Eintrag sichtbar; ältere mittlere Pfadelemente dürfen visuell zu einer zugänglichen Ellipsen-Auswahl zusammengefasst werden, ohne Gruppen aus dem semantischen Pfad zu entfernen. Fokus, Breadcrumb-Navigation, Suche und Filter bleiben miteinander kombinierbar.
+
+Ein einfacher Klick auf eine Gruppenbeschriftung behält seine bestehende Collapse-Funktion. Ein Doppelklick auf Gruppenfläche oder -beschriftung hat Vorrang, fokussiert die Gruppe und darf nicht zusätzlich ein- oder ausklappen. Die Interaktionsauflösung muss für Maus und Trackpad deterministisch sein.
 
 ## 10. Detailpanel
 
@@ -536,7 +549,7 @@ Semantisch validiert werden mindestens:
 
 - Der aktuelle Editorinhalt wird nach Änderungen automatisch in `localStorage` gespeichert.
 - YAML-Text und UI-Zustand werden als getrennte Einträge gespeichert.
-- Der UI-Zustand des MVP enthält ausschließlich die getrennt gespeicherten, manuell eingeklappten Capability- und Gruppen-IDs.
+- Der persistierte UI-Zustand des MVP enthält ausschließlich die getrennt gespeicherten, manuell eingeklappten Capability- und Gruppen-IDs sowie das Ansichtsprofil. Temporäre Fokusöffnungen und der Breadcrumb-Pfad werden daraus abgeleitet und nicht gespeichert.
 - Fokus, Auswahl, Suche und aktive Filter werden nicht sitzungsübergreifend gespeichert.
 - Gespeicherte Daten tragen jeweils eine interne Speicher- und Schema-Version.
 - Beim Start wird zuerst der lokale Stand geladen.
@@ -574,6 +587,7 @@ YAML-Text
   -> Parser und Quellpositionsindex
   -> Schema- und Semantikvalidierung
   -> normalisiertes Capability-Modell
+  -> gemeinsamer Hierarchieindex für Gruppen und Capabilities
   -> Suche, Filter, Collapse und Fokus
   -> Bottom-up-Platzbedarfsberechnung des sichtbaren Baums
   -> deterministische Top-down-Layout-Engine
@@ -594,18 +608,32 @@ Vorgesehene interne Module:
 
 Zwischen `domain`, `layout`, `visibility` und `renderer` dürfen keine React-Abhängigkeiten bestehen, soweit dies fachlich nicht erforderlich ist. Damit bleibt der Rendering-Kern testbar und später wiederverwendbar.
 
+Der normalisierte Hierarchieindex bildet Capability- und Gruppen-IDs gemeinsam auf Elementart, Eltern-ID und vollständigen Pfad ab. Fokusziel und Breadcrumb verwenden denselben Index, damit Gruppenpfade nicht nachträglich aus der Renderstruktur rekonstruiert werden. Die `visibility`-Schicht leitet daraus die temporären Fokusöffnungen ab, bevor der sichtbare Baum an Bedarfsberechnung und Layout übergeben wird. Der manuelle Collapse-Zustand bleibt dabei unverändert die persistierbare Quelle; Fokusöffnungen bilden eine separate, höher priorisierte Sichtbarkeitsschicht.
+
 ### 13.3 Zustand
 
 Der Zustand wird in klar getrennte Bereiche aufgeteilt:
 
 - Editor: aktueller YAML-Text, Diagnosen, letzte gültige Normalform;
-- Ansicht: Suche, Filter, Collapse-Set, Fokus-ID, Auswahl-ID;
+- Ansicht: Suche, Filter, manuelles Collapse-Set, Fokusziel-ID, abgeleitete Fokusöffnungen, Auswahl-ID;
 - Ansichtsprofil: „Ebene 1“, „Ebene 2“, „Ebene 3“ oder „Vollständig“;
 - Viewport: Zoom und Pan;
 - Export: gewähltes Format, laufender Fortschritt, Ergebnis- oder Fehlermeldung;
 - Persistenz: Speicherstatus und Schema-Version.
 
 Für das MVP genügt React State mit Reducer und Context. Eine zusätzliche globale State-Bibliothek wird nur eingeführt, wenn die Umsetzung einen konkreten Bedarf zeigt.
+
+### 13.4 Umsetzungsreihenfolge für Fokus und Breadcrumb
+
+Die Erweiterung wird in kleinen, getrennt prüfbaren Schritten umgesetzt:
+
+1. Der normalisierte Hierarchieindex wird auf gemeinsame Pfade für Gruppen und Capabilities erweitert und zunächst mit Unit-Tests abgesichert.
+2. Das Fokusziel wird von einer reinen Capability-ID auf ein gemeinsam auflösbares Gruppen- oder Capability-Ziel umgestellt.
+3. Die `visibility`-Schicht erhält die flüchtigen Fokusöffnungen für fokussierte Gruppen und die direkte nächste Ebene einer fokussierten Capability; Persistenz und Layout bleiben dabei unverändert.
+4. Gruppen erhalten die Doppelklick-Interaktion mit Vorrang vor dem einfachen Collapse-Klick. Capability-Fokus und Viewport-Wiederherstellung werden gegen Regressionen geprüft.
+5. Der dauerhaft sichtbare Breadcrumb wird ausschließlich aus dem Hierarchieindex und dem aktuellen Fokusziel abgeleitet und anschließend für Desktop und Tablet responsiv abgesichert.
+6. Das Export-Szenenmodell übernimmt denselben vollständigen Fokuspfad einschließlich Gruppen.
+7. Abschließend werden die kombinierten Abläufe mit Suche, Filter, Ansichtsprofil, manuellem Collapse, Fokuswechsel, Breadcrumb-Navigation und Export browserübergreifend getestet.
 
 ## 14. Nichtfunktionale Anforderungen
 
@@ -672,7 +700,7 @@ Besonders vollständig zu testen sind:
 - Box- und Chevron-Auflösung einschließlich ungültiger Chevrons mit Kindern;
 - Filterlogik einschließlich Kontext-Ahnen;
 - Wechselwirkung zwischen Filter und manuellem Collapse;
-- Fokus und Breadcrumb-Pfade;
+- Fokus auf Capability und Gruppe, vollständige Breadcrumb-Pfade einschließlich Gruppen sowie temporäre Öffnung der direkten nächsten Capability-Ebene;
 - semantische Zoom-Entscheidung bei Platzmangel.
 - Schema, Vererbung, Ausrichtung und Collapse-Platzhalter von Gruppen auf erster und zweiter Ebene.
 
@@ -684,7 +712,9 @@ Besonders vollständig zu testen sind:
 - Beschreibungen erscheinen vollständig im Detailpanel, aber niemals in der Map;
 - Reset und Wiederherstellung aus `localStorage`;
 - Filter-, Suche-, Collapse- und Fokusabläufe.
-- Fokus per Doppelklick auf Box und Chevron ohne sichtbare Fokus-Schaltfläche;
+- Fokus per Doppelklick auf Box, Chevron und Gruppe ohne sichtbare Fokus-Schaltfläche;
+- dauerhaft sichtbarer Breadcrumb-Pfad mit Map-Wurzel, Gruppen und Capability-Ahnen;
+- temporäre Fokusöffnung der direkten nächsten Capability-Ebene ohne Mutation des manuellen oder gespeicherten Collapse-Zustands;
 - als normale Boxen dargestellte horizontale Chevron-Konfigurationen ohne Abwärtsindikator oder Verbindungslinie;
 - vertikale Chevron-Wertströme mit grauer Polygonumrandung;
 - horizontales und vertikales Gruppen-Rendering auf zwei Ebenen einschließlich getrenntem Collapse-Zustand.
@@ -740,9 +770,9 @@ Das MVP gilt als abgenommen, wenn:
 6. beliebig rekursive `children` vom Schema akzeptiert werden;
 7. das gemischte Layout einschließlich beider Flush-Richtungen, explizitem und automatischem `layerWeight`, explizitem und automatischem `trackWeight` sowie der Bottom-up-Bedarfsberechnung dem beschriebenen Algorithmus entspricht;
 8. Farb- und Icon-Vererbung korrekt funktioniert;
-9. Suche, Metadatenfilter, Collapse und der ausschließlich per Doppelklick aktivierte Fokusmodus korrekt zusammenspielen;
+9. Suche, Metadatenfilter, Collapse und der ausschließlich per Doppelklick auf Capability oder Gruppe aktivierte Fokusmodus korrekt zusammenspielen;
 10. Auswahl einer Capability alle definierten Details im Panel zeigt;
-11. Zoom, Pan, „Ansicht einpassen“, Viewport-Ankerung beim Collapse sowie Wiederherstellung des Viewports nach dem Fokusmodus funktionieren;
+11. Zoom, Pan, „Ansicht einpassen“, Viewport-Ankerung beim Collapse, einmaliges Einpassen beim Fokuswechsel sowie Wiederherstellung des ursprünglichen Viewports nach dem Fokusmodus funktionieren;
 12. die komplexe Referenzmap mit ungefähr 500 Capabilities und bis zu vier Capability-Ebenen die Performance-Ziele im vereinbarten Testsystem erfüllt;
 13. Desktop-Browser und Tablet-Darstellung gemäß Zielrahmen getestet sind;
 14. Linting, Typecheck, automatisierte Tests und Produktions-Build erfolgreich durchlaufen;
@@ -751,7 +781,9 @@ Das MVP gilt als abgenommen, wenn:
 17. Blatt-Capabilities kompakte Inhalte besitzen, ihre äußeren Boxen den zugewiesenen Slot vollständig ausfüllen und Beschreibungen ausschließlich im Detailpanel erscheinen;
 18. vertikale Blatt-Capabilities als vollflächiger Rechts-Chevron mit grauer Polygonumrandung und horizontale Chevron-Konfigurationen vorläufig als normale Box dargestellt werden;
 19. die Referenzdatei alle in Abschnitt 15.4 definierten Varianzmerkmale reproduzierbar abdeckt;
-20. eine Map ohne gespeicherten Ansichtsstatus in „Ebene 1“ startet und alle Ansichtsprofile reproduzierbare Tiefen erzeugen.
+20. eine Map ohne gespeicherten Ansichtsstatus in „Ebene 1“ startet und alle Ansichtsprofile reproduzierbare Tiefen erzeugen;
+21. der Breadcrumb in fokussierter und nicht fokussierter Ansicht dauerhaft sichtbar ist, Gruppen und Capability-Ahnen vollständig und in korrekter Reihenfolge enthält und die Navigation zu jedem fokussierbaren Ahnen erlaubt;
+22. der Capability-Fokus genau die direkte nächste Capability-Ebene temporär sichtbar macht, ohne manuelle Collapse-Sets, Ansichtsprofil oder `localStorage` zu verändern, und der Gruppenfokus die fokussierte Gruppe samt direkten Inhalten öffnet, ohne direkt enthaltene Capabilities ihrerseits automatisch zu öffnen.
 
 ## 17. Export-Erweiterung
 
@@ -789,7 +821,7 @@ Vor dem ersten Format wird eine formatneutrale, immutable Export-Repräsentation
 
 Das Szenenmodell darf keine DOM-Elemente, React-Komponenten, CSS-Klassen oder React-Flow-Objekte enthalten. Gemeinsame Export-Tokens müssen aus denselben Designwerten wie die Bildschirmdarstellung abgeleitet werden. Die Reihenfolge im Szenenmodell definiert verbindlich die Zeichen- und Überlagerungsreihenfolge aller Formate.
 
-Der Erstellungszeitpunkt wird einmal pro Exportvorgang erzeugt und anschließend unverändert von allen Formatadaptern verwendet. Tests müssen eine injizierbare Uhr verwenden können. Die sichtbare Darstellung nutzt das lokale Datum und die lokale Uhrzeit einschließlich einer eindeutigen Zeitzonenangabe. Filter werden mit Feldbezeichnung und ausgewählten Werten zusammengefasst; der Fokus wird als vollständiger Capability-Pfad ausgegeben.
+Der Erstellungszeitpunkt wird einmal pro Exportvorgang erzeugt und anschließend unverändert von allen Formatadaptern verwendet. Tests müssen eine injizierbare Uhr verwenden können. Die sichtbare Darstellung nutzt das lokale Datum und die lokale Uhrzeit einschließlich einer eindeutigen Zeitzonenangabe. Filter werden mit Feldbezeichnung und ausgewählten Werten zusammengefasst; der Fokus wird als vollständiger struktureller Pfad einschließlich enthaltener Gruppen und Capability-Ahnen ausgegeben.
 
 ### 17.3 Bedienung, Dateinamen und Fehlerfälle
 
@@ -977,8 +1009,8 @@ Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 gef
 9. Explizite `trackWeight`- und `layerWeight`-Werte überschreiben die jeweilige automatische Bedarfsableitung. Automatische Gewichte werden relativ zum Median normalisiert und initial auf `0,5` bis `3` begrenzt.
 10. Das bisherige `layout.weight` wird durch `layout.layerWeight` ersetzt, nicht als Alias unterstützt und als Validierungsfehler mit Migrationshinweis behandelt.
 11. Die komplexe Referenzmap mit circa 500 Capabilities ist zugleich das standardmäßig geladene Startbeispiel und das Ziel von „Auf Beispiel zurücksetzen“.
-12. Der Fokusmodus wird ausschließlich per Doppelklick auf eine Capability aktiviert; sichtbare Fokus-Schaltflächen entfallen.
-13. Ein- und Ausklappen löst kein automatisches `fitView` aus. Das betätigte Element bleibt als Viewport-Anker stabil; ein vorheriger Viewport wird nach Verlassen des Fokusmodus wiederhergestellt.
+12. Der Fokusmodus wird ausschließlich per Doppelklick auf eine Capability oder Gruppe aktiviert; sichtbare Fokus-Schaltflächen entfallen. Ein Gruppen-Doppelklick darf nicht zusätzlich den Collapse-Zustand umschalten.
+13. Ein- und Ausklappen löst kein automatisches `fitView` aus. Das betätigte Element bleibt als Viewport-Anker stabil; Fokusziele werden beim Eintritt beziehungsweise Wechsel einmalig eingepasst und der ursprüngliche Viewport wird nach Verlassen des Fokusmodus wiederhergestellt.
 14. Ohne gespeicherten Ansichtsstatus startet die Map in „Ebene 1“. Manuelle Collapse-Zustände und das Ansichtsprofil werden ausschließlich lokal gespeichert; alte `overview`-Zustände werden auf „Ebene 1“ migriert.
 15. Die Referenzmap enthält fünf fachliche Hauptgruppen mit null bis drei Untergruppen und verwendet Chevrons nur für zusammenhängende Wertströme.
 16. Jede rekursive Elementliste teilt ihren verfügbaren Inhaltsbereich vollständig unter den aktuell sichtbaren Elementen auf. Verdeckte Ebenen beeinflussen weder automatische Track- noch Layer-Gewichte; kompakte Blattmaße dürfen keine leeren Slot-Restflächen erzeugen.
@@ -993,3 +1025,6 @@ Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 gef
 25. Exportdateien verwenden das Muster `<map-id>-<ansichtsprofil>-YYYYMMDD-HHmmss.<endung>` mit lokalem Exportzeitpunkt. Ein konfigurierbarer Dateinamenpräfix bleibt eine mögliche spätere Ausbaustufe.
 26. Gerundete Exportflächen besitzen absolute Radien im gemeinsamen Szenenmodell: Gruppen `10`, Capability-Boxen `9` logische Einheiten. PPTX muss diese Radien über einen expliziten nativen OOXML-Anpassungswert oder als nachgewiesenen Fallback über eine einzelne editierbare Freiform wiedergeben; das seitenverhältnisabhängige Standard-`roundRect` ist nicht zulässig.
 27. Lucide-Icons bleiben in der ersten PPTX-Version eingebettete SVG-Bilder. Ihre browserbasierte Konvertierung in katalogweit unterstützte native DrawingML-Geometrien wird als optionale Ausbaustufe gemäß Abschnitt 17.7.2 dokumentiert und erst bei ausreichendem fachlichem Bedarf umgesetzt.
+28. Der Fokus auf eine Capability öffnet temporär genau deren direkte nächste Capability-Ebene. Der Gruppenfokus öffnet die fokussierte Gruppe und zeigt ihre direkten Inhalte; direkt enthaltene Capabilities werden dabei nicht ihrerseits automatisch geöffnet. Beide Overrides verändern weder manuelle Collapse-Sets noch Ansichtsprofil oder `localStorage`.
+29. Die Breadcrumb-Navigation ist immer sichtbar. Ohne Fokus zeigt sie nur die Map-Wurzel; mit Fokus zeigt sie den vollständigen strukturellen Pfad einschließlich Gruppen und Capability-Ahnen und erlaubt die Navigation zu jedem fokussierbaren Ahnen.
+30. Fokusziel, Breadcrumb und Exportpfad basieren auf einem gemeinsamen normalisierten Hierarchieindex für Capabilities und Gruppen.

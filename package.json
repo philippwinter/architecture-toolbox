@@ -1,52 +1,27 @@
 {
-  "name": "capability-map-renderer",
-  "version": "0.1.0",
+  "name": "architecture-toolbox",
+  "version": "0.0.1",
   "private": true,
+  "description": "A growing collection of browser-based enterprise architecture tools.",
   "type": "module",
+  "workspaces": [
+    "tools/*"
+  ],
+  "engines": {
+    "node": ">=24 <25",
+    "npm": "11.16.0"
+  },
+  "packageManager": "npm@11.16.0",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:standalone": "tsc -b && vite build --mode standalone",
-    "lint": "eslint .",
-    "typecheck": "tsc -b --pretty false",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "playwright test"
-  },
-  "dependencies": {
-    "@codemirror/lang-yaml": "latest",
-    "@codemirror/lint": "latest",
-    "@uiw/react-codemirror": "latest",
-    "@xyflow/react": "latest",
-    "jspdf": "^4.2.1",
-    "lucide-react": "latest",
-    "pptxgenjs": "^4.0.1",
-    "react": "latest",
-    "react-dom": "latest",
-    "svg2pdf.js": "^2.7.0",
-    "yaml": "latest",
-    "zod": "latest"
-  },
-  "devDependencies": {
-    "@eslint/js": "latest",
-    "@playwright/test": "latest",
-    "@testing-library/jest-dom": "latest",
-    "@testing-library/react": "latest",
-    "@testing-library/user-event": "latest",
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@vitejs/plugin-react": "latest",
-    "eslint": "latest",
-    "eslint-plugin-react-hooks": "latest",
-    "eslint-plugin-react-refresh": "latest",
-    "globals": "latest",
-    "jsdom": "latest",
-    "jszip": "^3.10.1",
-    "pdfjs-dist": "^6.1.200",
-    "typescript": "latest",
-    "typescript-eslint": "latest",
-    "vite": "latest",
-    "vitest": "latest"
+    "dev": "npm run dev --workspace @architecture-toolbox/capability-map-studio",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace @architecture-toolbox/capability-map-studio --",
+    "build": "npm run build --workspaces --if-present",
+    "build:standalone": "npm run build:standalone --workspace @architecture-toolbox/capability-map-studio",
+    "build:pages": "npm run build:pages --workspace @architecture-toolbox/capability-map-studio && node scripts/assemble-pages.mjs",
+    "verify:standalone": "node scripts/verify-standalone.mjs",
+    "verify:pages": "node scripts/verify-pages.mjs"
   }
 }

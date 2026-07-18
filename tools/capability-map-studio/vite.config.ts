@@ -79,10 +79,16 @@ function standaloneBundle(): Plugin {
 
 export default defineConfig(({ mode }) => {
   const standalone = mode === 'standalone';
+  const pages = mode === 'pages';
+  const pagesBase =
+    process.env.VITE_BASE_PATH ?? '/architecture-toolbox/capability-map-studio/';
 
   return {
-    base: standalone ? './' : '/',
+    base: standalone ? './' : pages ? pagesBase : '/',
     plugins: [react(), ...(standalone ? [standaloneBundle()] : [])],
+    optimizeDeps: {
+      entries: ['index.html'],
+    },
     build: standalone
       ? {
           outDir: 'dist-standalone',

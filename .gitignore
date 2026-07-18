@@ -1,6 +1,8 @@
 node_modules/
 dist/
 dist-standalone/
+dist-pages/
+.release/
 coverage/
 playwright-report/
 test-results/

@@ -1,29 +1,33 @@
-# Capability Map Studio
+# Architecture Toolbox
 
-Eine statisch deploybare React-/TypeScript-Anwendung, die hierarchische Capability Maps aus YAML live validiert und rendert.
+[![CI](https://github.com/philippwinter/architecture-toolbox/actions/workflows/ci.yml/badge.svg)](https://github.com/philippwinter/architecture-toolbox/actions/workflows/ci.yml)
+[![GitHub Pages](https://github.com/philippwinter/architecture-toolbox/actions/workflows/ci.yml/badge.svg?event=push)](https://philippwinter.github.io/architecture-toolbox/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-Top-Level-Capabilities können optional in visuellen Gruppen mit eigener Hintergrundfarbe und horizontaler oder vertikaler Beschriftung organisiert werden. Gruppen lassen sich einklappen und bleiben dabei als schmale strukturelle Platzhalter sichtbar.
+A growing collection of browser-based tools for enterprise and business architecture.
+Every tool is designed to run locally in the browser and to keep user data on the device.
 
-## Entwicklung
+## Available tools
 
-Voraussetzung ist eine aktuelle Node.js-Version.
+### Capability Map Studio
+
+Create interactive capability maps from validated YAML, explore nested structures and
+export the current view to SVG, PNG, PDF or PowerPoint.
+
+- [Open Capability Map Studio](https://philippwinter.github.io/architecture-toolbox/capability-map-studio/)
+- [Tool documentation](./tools/capability-map-studio/README.md)
+- [Specification](./tools/capability-map-studio/spec.md)
+
+## Development
+
+The repository uses npm workspaces. Node.js 24 and npm 11.16.0 are required.
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Der Development-Server unterstützt Hot Reloading. Die Anwendung startet mit einem kommentierten Beispieldokument und speichert YAML sowie Collapse-Zustand getrennt im lokalen Browser-Speicher.
-
-## Standalone-Build ohne Webserver
-
-```bash
-npm run build:standalone
-```
-
-Der Befehl erzeugt `dist-standalone/index.html`. JavaScript, CSS und weitere Assets sind vollständig in diese eine Datei eingebettet. Sie kann direkt über den Dateimanager oder eine `file://`-Adresse in einem unterstützten Browser geöffnet und ohne Webserver verwendet werden.
-
-## Qualitätsprüfungen
+Quality and build commands run from the repository root:
 
 ```bash
 npm run lint
@@ -31,22 +35,23 @@ npm run typecheck
 npm test
 npm run build
 npm run build:standalone
+npm run verify:standalone
+npm run build:pages
+npm run verify:pages
 ```
 
-Optionale browserübergreifende End-to-End-Tests:
+Browser tests require the corresponding Playwright browsers:
 
 ```bash
 npx playwright install
 npm run test:e2e
 ```
 
-## Architektur
+## Builds and releases
 
-- React und Vite für Anwendung und Entwicklungsworkflow
-- React Flow für verschachtelte Kacheln sowie Zoom und Pan
-- CodeMirror 6 als YAML-Editor
-- `yaml` und Zod für Parsing, Quelldiagnostik und Schema-Validierung
-- pure TypeScript-Module für Sichtbarkeit, Vererbung und Layout
-- Vitest, Testing Library und Playwright für automatisierte Tests
+Each successful CI run provides temporary web and standalone artifacts. Versioned
+downloads are published through [GitHub Releases](https://github.com/philippwinter/architecture-toolbox/releases).
 
-Die vollständige fachliche und technische Beschreibung steht in [`spec.md`](./spec.md).
+## License
+
+This project is licensed under the [MIT License](./LICENSE).

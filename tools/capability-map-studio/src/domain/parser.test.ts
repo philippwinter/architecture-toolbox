@@ -147,6 +147,19 @@ map:
     expect(invalidChevron.ok).toBe(false);
     expect(invalidChevron.diagnostics[0]?.message).toContain('Blatt-Capabilities');
 
+    const unknownShape = parseCapabilityDocument(`version: 1
+map:
+  id: shape-map
+  name: Shape
+  capabilities:
+    - id: one
+      name: One
+      visualization:
+        shape: diamond
+`);
+    expect(unknownShape.ok).toBe(false);
+    expect(unknownShape.diagnostics[0]?.message).toContain('Unbekannte Capability-Form');
+
     const invalidLayer = parseCapabilityDocument(`version: 1
 map:
   id: layer-map

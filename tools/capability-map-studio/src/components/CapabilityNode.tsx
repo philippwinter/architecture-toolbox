@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Layers3 } from 'lucide-react';
 import { memo } from 'react';
 import type { Node, NodeProps } from '@xyflow/react';
 import { capabilityPresentationTokens } from '../domain/presentation';
+import type { CapabilityShapeGeometry } from '../domain/shapes';
 import type { NormalizedCapability } from '../domain/types';
 import { CapabilityIcon } from './CapabilityIcon';
 
@@ -16,7 +17,7 @@ export interface CapabilityNodeData extends Record<string, unknown> {
   hiddenDescendantCount: number;
   hasChildren: boolean;
   focusExpanded: boolean;
-  chevronContinues: boolean;
+  geometry: CapabilityShapeGeometry;
   onToggle: (id: string) => void;
   onFocus: (id: string) => void;
 }
@@ -44,10 +45,7 @@ export const CapabilityNode = memo(function CapabilityNode({
     collapsed,
   } = data;
   const foreground = textColor(capability.color);
-  const renderedShape =
-    capability.shape === 'chevron' && capability.layout.direction === 'vertical'
-      ? 'chevron'
-      : 'box';
+  const { geometry } = data;
   const iconSize = compact
     ? capabilityPresentationTokens.compactIconSize
     : capabilityPresentationTokens.regularIconSize;
@@ -64,9 +62,9 @@ export const CapabilityNode = memo(function CapabilityNode({
         data.contextOnly ? ' context-only' : ''
       }${data.searchMatch ? ' search-match' : ''}${compact ? ' compact' : ''}${
         minimal ? ' minimal' : ''
-      } shape-${renderedShape} direction-${capability.layout.direction}${
-        data.chevronContinues ? ' chevron-continues' : ''
-      }`}
+      } shape-${geometry.renderedShapeId} configured-shape-${
+        geometry.configuredShapeId
+      } direction-${capability.layout.direction}`}
       style={
         {
           '--cap-color': capability.color,
@@ -74,12 +72,37 @@ export const CapabilityNode = memo(function CapabilityNode({
         } as React.CSSProperties
       }
       title={capability.name}
+      aria-label={capability.name}
       onDoubleClickCapture={(event) => {
         event.stopPropagation();
         data.onFocus(capability.id);
       }}
     >
-      <div className="capability-node__surface">
+      <svg
+        className="capability-node__surface"
+        viewBox={`0 0 ${geometry.bounds.width} ${geometry.bounds.height}`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path
+          className="capability-node__shape"
+          d={geometry.path}
+          fill={capability.color}
+          stroke="rgb(20 30 40 / 21%)"
+          strokeWidth={geometry.strokeWidth}
+          strokeLinejoin={geometry.strokeLinejoin}
+        />
+        <path className="capability-node__state-outline" d={geometry.path} />
+      </svg>
+      <div
+        className="capability-node__content nodrag"
+        style={{
+          left: geometry.contentRect.x,
+          top: geometry.contentRect.y,
+          width: geometry.contentRect.width,
+          height: geometry.contentRect.height,
+        }}
+      >
         <header
           className="capability-node__header"
           style={{ gap: capabilityPresentationTokens.iconTextGap }}

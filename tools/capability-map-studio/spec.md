@@ -1,8 +1,8 @@
 # Capability Map Renderer – Spezifikation
 
-Status: Erweiterungsspezifikation v0.9 (geplant)
+Status: Erweiterungsspezifikation v0.10 (geplant)
 Stand: 18. Juli 2026
-Ziel: Umsetzungsreife Spezifikation für Fokus, Hierarchienavigation und Export auf Basis des bestehenden Renderers
+Ziel: Umsetzungsreife Spezifikation für Fokus, Hierarchienavigation, erweiterbare Capability-Formen und Export auf Basis des bestehenden Renderers
 
 ## 1. Produktvision
 
@@ -28,7 +28,7 @@ Das MVP muss:
 12. Capabilities optional in rein visuellen, einklappbaren Gruppen auf zwei Gruppenebenen strukturieren können.
 13. Blatt-Capabilities mit kompakter Inhaltsdarstellung rendern, ihren zugewiesenen Layout-Slot jedoch vollständig ausfüllen lassen.
 14. Beschreibungen ausschließlich im Detailpanel und nicht innerhalb der Capability Map anzeigen.
-15. Capabilities wahlweise als rechteckige Box oder als Chevron einer Wertstromdarstellung rendern.
+15. Capabilities über einen erweiterbaren, integrierten Formenkatalog rendern; initial stehen die rechteckige Box und der Chevron einer Wertstromdarstellung zur Verfügung.
 16. fehlende `trackWeight`- und `layerWeight`-Werte anhand des rekursiv berechneten Platzbedarfs automatisch bestimmen.
 17. den Fokusmodus für Capabilities und Gruppen per Doppelklick ohne explizite Fokus-Schaltfläche aktivieren und den aktuellen Hierarchiepfad dauerhaft als Breadcrumb anzeigen.
 18. eine reproduzierbare komplexe Referenzmap mit ungefähr 500 Capabilities und bis zu vier Capability-Ebenen für Funktions-, Layout- und Performanceprüfungen bereitstellen.
@@ -46,7 +46,7 @@ Nicht Bestandteil des MVP sind:
 - eine zweite Oberflächensprache;
 - mehr als zwei ineinander verschachtelte Gruppenebenen;
 - Gruppen innerhalb der `children`-Liste einer Capability;
-- frei definierbare Polygonformen oder frei konfigurierbare Chevron-Geometrien;
+- durch YAML frei definierbare Polygonpfade, frei konfigurierbare Formgeometrien oder benutzerdefinierter SVG-/HTML-Inhalt; zusätzliche, durch die Anwendung implementierte und validierte Formen bleiben ausdrücklich vorgesehen;
 - frei referenzierbare Bilder, HTML-Inhalte, Skripte oder externe Icon-URLs.
 
 Die zuvor als Nicht-Ziel behandelten Exporte nach PNG, SVG und PowerPoint sowie der neu ergänzte PDF-Export sind Gegenstand der separaten Erweiterung in Abschnitt 17. Sie verändern nicht rückwirkend den Umfang des ursprünglichen MVP.
@@ -94,11 +94,11 @@ Die Map bietet:
 - eine kompakte Auswahl der Ansichtstiefe mit „Ebene 1“, „Ebene 2“, „Ebene 3“ und „Vollständig“;
 - Auswahl einer Capability per einfachem Klick;
 - Ein- und Ausklappen einer Capability mit Kindern;
-- Fokus auf eine Capability als temporäre Wurzel per Doppelklick auf ihre Box beziehungsweise ihren Chevron;
+- Fokus auf eine Capability als temporäre Wurzel per Doppelklick auf ihre sichtbare Form;
 - Fokus auf eine Gruppe als temporäre Wurzel per Doppelklick auf ihre Gruppenfläche oder Beschriftung;
 - Rückkehr zur übergeordneten beziehungsweise vollständigen Map.
 
-Die Breadcrumb-Navigation ist auch ohne aktiven Fokus sichtbar. Sie beginnt stets mit der Map-Wurzel, zeigt bei aktivem Fokus den vollständigen strukturellen Pfad einschließlich aller enthaltenen Gruppen und Capabilities und erlaubt die direkte Navigation zu jedem fokussierbaren Ahnen. Eine separate Fokus-Schaltfläche wird weder auf Capabilities, Gruppen noch im Detailpanel angezeigt. Kacheln, Chevrons und Gruppen sind nicht frei verschiebbar und nicht direkt skalierbar.
+Die Breadcrumb-Navigation ist auch ohne aktiven Fokus sichtbar. Sie beginnt stets mit der Map-Wurzel, zeigt bei aktivem Fokus den vollständigen strukturellen Pfad einschließlich aller enthaltenen Gruppen und Capabilities und erlaubt die direkte Navigation zu jedem fokussierbaren Ahnen. Eine separate Fokus-Schaltfläche wird weder auf Capabilities, Gruppen noch im Detailpanel angezeigt. Capability-Formen und Gruppen sind nicht frei verschiebbar und nicht direkt skalierbar.
 
 ## 6. YAML-Datenmodell
 
@@ -196,7 +196,7 @@ map:
 | `tags` | String-Liste | nein | Such- und Filtermerkmale |
 | `visualization.color` | RGB-Hex-String `#RRGGBB` | nein | Eigene Hintergrundfarbe |
 | `visualization.icon` | String | nein | Offizieller Name eines Icons aus dem installierten Lucide-Katalog |
-| `visualization.shape` | `box` oder `chevron` | nein | Standard: `box`; `chevron` ist nur für Blatt-Capabilities zulässig |
+| `visualization.shape` | Shape-ID aus dem integrierten Formenkatalog | nein | Standard: `box`; initial zulässig sind `box` und `chevron`; `chevron` ist nur für Blatt-Capabilities zulässig |
 | `layout.direction` | `vertical` oder `horizontal` | nein | Standard: `vertical` |
 | `layout.layerWeight` | positive Zahl | nein | Optionaler expliziter Höhenfaktor eines horizontalen Layers; ohne Wert erfolgt eine automatische Bedarfsberechnung ausschließlich aus aktuell sichtbaren Elementen |
 | `layout.trackWeight` | positive Zahl | nein | Optionaler expliziter Track-Faktor; ohne Wert erfolgt eine automatische Bedarfsberechnung ausschließlich aus aktuell sichtbaren Elementen |
@@ -304,7 +304,7 @@ Das Ergebnis jeder rekursiven Elementliste ist ein vollständiges rechteckiges T
 Der bevorzugte Platzbedarf wird deterministisch berechnet:
 
 1. Eine Blatt-Capability liefert für die automatische Gewichtung einen kompakten bevorzugten Platzbedarf. Dieser Bedarf beeinflusst die relative Slot-Aufteilung, begrenzt aber nicht die anschließend zugewiesene äußere Boxgröße.
-2. Ein Chevron berücksichtigt zusätzlich seine Pfeilspitze und die Überlappung mit direkt angrenzenden Chevrons.
+2. Der Bedarf einer Capability berücksichtigt den sicheren Inhaltsbereich ihrer aufgelösten Form. Ein Chevron berücksichtigt zusätzlich Pfeilspitze, Einzug und den definierten Abstand zu direkt angrenzenden Chevrons; eine Überlappung findet nicht statt.
 3. Der Bedarf einer Nicht-Blatt-Capability ergibt sich aus Header, Innenabständen und dem rekursiv berechneten Bedarf ihres Kind-Layouts.
 4. Der Bedarf einer Gruppe ergibt sich aus Namensbereich, Innenabständen und dem rekursiv berechneten Bedarf ihrer Inhalte.
 5. Der bevorzugte Breitenbedarf eines gestapelten Tracks ist das Maximum seiner Elemente; sein bevorzugter Höhenbedarf ist deren Summe einschließlich Abständen.
@@ -430,18 +430,45 @@ Die konkreten Mindestgrößen werden in der Implementierung als zentrale Design-
 - Ein unbekannter Icon-Name ist ein Schema-/Semantikfehler.
 - Externe Bild- oder Icon-URLs sind im MVP unzulässig.
 
-### 8.4 Boxen und Wertstrom-Chevrons
+### 8.4 Erweiterbares Formensystem
 
-- `visualization.shape: box` ist der Standard und verwendet die bestehende abgerundete Rechteckdarstellung.
+`visualization.shape` wählt eine Form aus einem von der Anwendung bereitgestellten Formenkatalog. Der Katalog enthält initial `box` und `chevron`, ist architektonisch jedoch nicht auf diese Werte begrenzt. Weitere Formen wie Raute, Hexagon, Pfeil oder Pill dürfen später ergänzt werden, ohne das YAML-Feld, den React-Flow-Node-Typ, die Interaktionslogik oder das Export-Szenenmodell grundlegend zu verändern.
+
+Für jede registrierte Form existiert genau eine zentrale, formatneutrale Definition mit mindestens:
+
+- stabiler Shape-ID und Anzeigename;
+- einer aus tatsächlicher Breite, Höhe und zentralen Design-Tokens deterministisch erzeugten Vektorgeometrie;
+- einem sicheren rechteckigen Inhaltsbereich für Icon, Text und Zustandsindikatoren;
+- zulässigen Capability-Arten, Layout-Richtungen und gegebenenfalls einer definierten Ersatzdarstellung;
+- Kontur-, Ecken- und Join-Regeln;
+- einer vereinfachten Legendengeometrie;
+- Exporthinweisen für SVG und editierbare PowerPoint-Geometrie.
+
+Unbekannte Shape-IDs sind Validierungsfehler. Neue integrierte Formen erweitern den Katalog und die Schema-Validierung, erfordern aber keine neue YAML-Struktur. Eigene SVG-Pfade oder Geometrieparameter werden nicht aus dem YAML übernommen. Dadurch bleiben Darstellung, Sicherheit, Validierung und Export reproduzierbar.
+
+Alle Capability-Formen verwenden denselben rechteckigen äußeren Interaktions-Wrapper. Er bleibt für React Flow die maßgebliche Node-Grenze und übernimmt Auswahl, Drag-Verhinderung, Doppelklick, Tooltip, zugänglichen Namen und Zustandsklassen. Die sichtbare Form wird darin als absolut positionierte SVG-Fläche dargestellt; sie empfängt selbst keine Pointer-Ereignisse. Icon, Name und Bedienelemente liegen als semantische HTML-Inhaltsebene über der SVG-Fläche und werden innerhalb des von der Form gelieferten sicheren Inhaltsbereichs ausgerichtet. Interaktive Inhaltselemente verwenden die React-Flow-Utility-Klasse `nodrag`.
+
+Füllung und Grundkontur einer nicht-rechteckigen Form werden durch **einen gemeinsamen SVG-Pfad** mit `fill` und echtem `stroke` dargestellt. Eine Kontur darf nicht durch zwei ineinandergelegte Polygone, CSS-`clip-path`, Pseudoelemente oder unterschiedlich große Füll- und Rahmenflächen simuliert werden. Der Pfad berücksichtigt die halbe Konturstärke an den Node-Grenzen, sodass weder Spitzen noch Linien abgeschnitten werden. Auswahl, Suche und Fokus dürfen einen zusätzlichen, auf demselben Pfad basierenden Effekt verwenden, verändern aber weder die Grundgeometrie noch deren Konturstärke.
+
+Die Formdefinition ist von React und React Flow unabhängig. Bildschirmrenderer und Exportadapter erhalten dieselbe aufgelöste Geometrie; formatspezifische Nachbauten der Pfadpunkte sind unzulässig. Änderungen an Spitze, Einzug, Ecken oder Inhaltsbereich einer Form werden dadurch an einer Stelle vorgenommen und müssen in Web, SVG, PNG, PDF und PPTX konsistent wirksam werden.
+
+#### 8.4.1 Box
+
+- `visualization.shape: box` ist der Standard und verwendet ein abgerundetes Rechteck mit den zentral definierten absoluten Eckenradien.
+- Die Box ist für Blatt- und Nicht-Blatt-Capabilities sowie beide Layout-Richtungen zulässig.
+- Formfläche, Headertrennung und sicherer Inhaltsbereich berücksichtigen die vorhandenen Capability-Inhalte und sichtbaren Kinder.
+
+#### 8.4.2 Wertstrom-Chevron
+
 - Chevrons sind in dieser Ausbaustufe ausschließlich für Blatt-Capabilities zulässig. Ein Chevron mit `children` ist ein Validierungsfehler mit dem Hinweis, entweder die Kinder zu entfernen oder `shape: box` zu verwenden.
-- Bei `visualization.shape: chevron` und `layout.direction: vertical` wird die gesamte Capability als nach rechts gerichtetes Wertstromsegment dargestellt. Die sichtbare Form besitzt links eine Einbuchtung und rechts eine Pfeilspitze. Direkt aufeinanderfolgende Chevron-Geschwister greifen mit einem kleinen, zentral definierten Abstand oder einer leichten Überlappung optisch ineinander und bilden eine zusammenhängende horizontale Kette.
-- Vertikale Chevron-Segmente besitzen entlang ihrer vollständigen Polygonkontur dieselbe charakteristische graue Umrandung wie reguläre Capability-Boxen. Auswahl- und Suchrahmen liegen weiterhin außerhalb dieser Kontur.
-- Bei `visualization.shape: chevron` und `layout.direction: horizontal` wird die Capability bis auf Weiteres wie eine reguläre abgerundete Box dargestellt. Es gibt weder einen linken Abwärts-Chevron noch eine vertikale Verbindungslinie. Der YAML-Wert `shape: chevron` bleibt erhalten, damit die spezialisierte horizontale Darstellung später ohne Schemaänderung wieder eingeführt werden kann.
-- Boxen und Flushes unterbrechen eine Chevron-Kette in der jeweiligen Flussrichtung.
+- Bei `visualization.shape: chevron` und `layout.direction: vertical` wird die Capability als nach rechts gerichtetes Wertstromsegment dargestellt. Der kanonische Pfad besitzt links eine Einbuchtung und rechts eine Pfeilspitze. Die initialen absoluten Design-Tokens sind `tipDepth = 22`, `notchDepth = 18`, `strokeWidth = 1` und `segmentGap = 4` logische Einheiten.
+- Für ein Layoutrechteck mit Breite `w`, Höhe `h` und `strokeInset = strokeWidth / 2` gilt `maxDepth = max(0, min((w - 2 × strokeInset) / 3, (h - 2 × strokeInset) / 2))`. Die wirksame Spitzen- beziehungsweise Einzugstiefe ist jeweils das Minimum aus ihrem Design-Token und `maxDepth`. Der geschlossene Pfad verläuft, ausgehend links oben und im Uhrzeigersinn, über linke obere Ecke, Beginn der rechten Spitze, rechte Spitze, Ende der rechten Spitze, linke untere Ecke und linke Einbuchtung. Sämtliche Außenpunkte liegen um `strokeInset` innerhalb des Layoutrechtecks. Damit bleibt die Kontur auch bei kleinen Elementen vollständig sichtbar und die Form schneidet sich nicht selbst.
+- Der Chevron besitzt entlang seiner vollständigen Kontur dieselbe charakteristische graue Grundlinie wie reguläre Capability-Boxen. Die erste Version verwendet einen zentral festgelegten, leicht gerundeten Linienübergang (`stroke-linejoin: round`) und eine einheitliche Konturstärke.
+- Der sichere Inhaltsbereich beginnt rechts der linken Einbuchtung und endet links der Pfeilspitze. Icon und Text werden innerhalb dieses Bereichs gemeinsam zentriert; Formspitzen dürfen nicht als nutzbare Textbreite gezählt werden.
+- Direkt aufeinanderfolgende Chevron-Geschwister bleiben eigenständige, vollständig umrandete Formen. Sie überlappen sich nicht und werden initial durch einen zentralen horizontalen Abstand von `4` logischen Einheiten getrennt. Boxen und Flushes unterbrechen eine Chevron-Kette.
+- Bei `visualization.shape: chevron` und `layout.direction: horizontal` wird die Capability bis auf Weiteres über die im Formenkatalog definierte Ersatzdarstellung `box` gerendert. Es gibt weder einen linken Abwärts-Chevron noch eine vertikale Verbindungslinie. Die konfigurierte Shape-ID bleibt im normalisierten Modell erhalten, damit später eine spezialisierte horizontale Variante ohne Schemaänderung ergänzt werden kann.
 - Ein Chevron unterstützt dieselben wirksamen Farben, Icons, Auswahl-, Such-, Filter- und Doppelklick-Interaktionen wie eine Box.
-- Der Capability-Name muss vollständig zugänglich bleiben. Reicht die sichtbare Chevron-Breite nicht aus, darf der Name visuell gekürzt werden, muss aber über Tooltip und zugänglichen Namen vollständig verfügbar sein.
-- Die eigentliche Pfeilform liegt innerhalb eines ungeclippten äußeren Interaktions-Wrappers. Auswahlrahmen, Suchmarkierung und Fokuszustand bleiben dadurch vollständig sichtbar.
-- Form, Pfeilwinkel, Segmentbreite, Überlappung und Innenabstände werden als zentrale Design-Tokens umgesetzt und nicht pro YAML-Element konfiguriert.
+- Der Capability-Name muss vollständig zugänglich bleiben. Reicht der sichere Inhaltsbereich nicht aus, darf der Name visuell gekürzt werden, muss aber über Tooltip und zugänglichen Namen vollständig verfügbar sein.
 
 ## 9. Suche, Filter und Sichtbarkeit
 
@@ -478,7 +505,7 @@ Beim Ein- oder Ausklappen bleibt das betätigte Element als visueller Anker an d
 
 ### 9.4 Fokusmodus
 
-Ein Doppelklick auf eine Capability-Box, einen Capability-Chevron oder eine Gruppenfläche behandelt das gewählte Element temporär als Wurzel. Gruppen beider zulässigen Gruppenebenen sind fokussierbar; Flushes bleiben rein strukturell und können nicht fokussiert werden. Der Doppelklick erfordert keine gesonderte Fokus-Schaltfläche.
+Ein Doppelklick auf eine registrierte Capability-Form oder eine Gruppenfläche behandelt das gewählte Element temporär als Wurzel. Gruppen beider zulässigen Gruppenebenen sind fokussierbar; Flushes bleiben rein strukturell und können nicht fokussiert werden. Der Doppelklick erfordert keine gesonderte Fokus-Schaltfläche.
 
 Beim Fokus auf eine Capability wird diese unabhängig von Ansichtsprofil und manuellem Collapse-Zustand temporär geöffnet, sodass ihre direkten Capability-Kinder als genau nächste Capability-Ebene sichtbar werden. Die direkten Kinder selbst werden nicht automatisch geöffnet; tiefere Ebenen folgen wieder dem aktiven Ansichtsprofil, dem manuellen Collapse-Zustand sowie Suche und Filtern. Bei einer Blatt-Capability entsteht kein zusätzlicher Leerraum. Beim Fokus auf eine Gruppe wird die Gruppe selbst einschließlich notwendiger Gruppenahnen temporär geöffnet und ihre direkten Inhalte werden sichtbar. Direkt enthaltene Capabilities werden dabei nicht ihrerseits automatisch geöffnet; ihre Kinder folgen weiterhin dem aktiven Ansichtsprofil, dem manuellen Collapse-Zustand sowie Suche und Filtern.
 
@@ -527,9 +554,10 @@ Semantisch validiert werden mindestens:
 - global eindeutige Capability- und Gruppen-IDs;
 - gültige ID-Formate;
 - gültige Farben und bekannte Icons;
+- bekannte Shape-IDs und die im Formenkatalog definierten Einschränkungen der gewählten Form;
 - maximal zwei Gruppenebenen sowie keine Gruppen innerhalb von Capability-`children`;
 - gültige Positionen von Flushes und keine leeren Layoutsegmente;
-- `shape: chevron` ausschließlich für Blatt-Capabilities;
+- `shape: chevron` ausschließlich für Blatt-Capabilities und dessen definierte Box-Ersatzdarstellung bei horizontalem Layout;
 - positive `layerWeight`- und `trackWeight`-Werte;
 - korrekte Position von `layerWeight` und `trackWeight`;
 - Verwendung des nicht mehr unterstützten Felds `weight` mit einem konkreten Migrationshinweis auf `layerWeight`;
@@ -576,7 +604,9 @@ Semantisch validiert werden mindestens:
 | End-to-End-Tests | Playwright | Browserübergreifende Kernabläufe und visuelle Regressionstests |
 | Linting | ESLint mit `typescript-eslint` | Type-aware TypeScript-Regeln und reproduzierbare Qualitätsprüfung |
 
-React Flow übernimmt Viewport, Eingaben und das Rendering verschachtelter Custom Nodes. Es bestimmt nicht die fachliche Anordnung. Eine eigene, pure TypeScript-Layoutfunktion berechnet in einer Bottom-up-Phase zunächst die bevorzugten Platzbedarfe ausschließlich des sichtbaren Baums und weist in einer Top-down-Phase lückenlos die verfügbaren absoluten Rechtecke zu. Anschließend übersetzt der Adapter Capabilities und Gruppen in React-Flow-Nodes mit Elternbezug; Flushes existieren nur in der Layout-Zwischenrepräsentation.
+React Flow übernimmt Viewport, Eingaben und das Rendering verschachtelter Custom Nodes. Es bestimmt weder die fachliche Anordnung noch die sichtbare Form einer Capability. Alle Capability-Formen werden über einen gemeinsamen registrierten Capability-Custom-Node gerendert; `visualization.shape` wird als Formdatenwert an dessen SVG-Shape-Surface übergeben. Eine neue Form darf deshalb nicht allein zur Darstellung einen zusätzlichen React-Flow-Node-Typ erfordern. Eine eigene, pure TypeScript-Layoutfunktion berechnet in einer Bottom-up-Phase zunächst die bevorzugten Platzbedarfe ausschließlich des sichtbaren Baums und weist in einer Top-down-Phase lückenlos die verfügbaren absoluten Rechtecke zu. Anschließend übersetzt der Adapter Capabilities und Gruppen in React-Flow-Nodes mit Elternbezug; Flushes existieren nur in der Layout-Zwischenrepräsentation.
+
+Ein von React unabhängiges Shape-Registry-Modul löst eine Shape-ID, das endgültige Layoutrechteck und die Design-Tokens in eine kanonische Formgeometrie auf. Diese enthält mindestens den sichtbaren Vektorpfad, den sicheren Inhaltsbereich, Konturparameter und die tatsächlich verwendete Darstellungsvariante. Bildschirm- und Exportrenderer konsumieren dieses Ergebnis, anstatt eigene Box-, Chevron- oder künftige Formpunkte zu berechnen. Der äußere React-Flow-Node bleibt rechteckig; ausschließlich die visuelle SVG-Fläche folgt dem kanonischen Pfad.
 
 Der Export greift nicht auf einen Screenshot des sichtbaren Browserausschnitts zurück. Ein formatneutrales Export-Szenenmodell wird aus demselben sichtbaren Baum und denselben absoluten Layoutrechtecken abgeleitet. Daraus wird als erste kanonische Ausgabe ein selbstständiges SVG erzeugt. PNG rasterisiert ausschließlich dieses SVG; PDF übernimmt dieselbe SVG-Geometrie soweit technisch möglich vektorbasiert. Dadurch verwenden Bildschirmdarstellung und alle Exportformate dieselbe Geometrie, während formatspezifische Renderer keine React-Flow- oder Viewport-Transformationen rekonstruieren oder redundante Zeichenlogik pflegen müssen.
 
@@ -591,6 +621,7 @@ YAML-Text
   -> Suche, Filter, Collapse und Fokus
   -> Bottom-up-Platzbedarfsberechnung des sichtbaren Baums
   -> deterministische Top-down-Layout-Engine
+  -> Shape-Registry und kanonische Formgeometrie
   -> React-Flow-Adapter
   -> Map und Detailpanel
 ```
@@ -600,13 +631,14 @@ Vorgesehene interne Module:
 - `domain`: Schema, normalisierte Typen und Vererbungsregeln;
 - `parser`: YAML-Parsing, Quellpfade und Diagnostik;
 - `layout`: pure, rekursive Bedarfs- und Layoutberechnung einschließlich Bändern, Tracks und Flushes;
+- `shapes`: registrierter Formenkatalog, zentrale Design-Tokens, Pfadgeometrien, sichere Inhaltsbereiche und Formrestriktionen ohne React-Abhängigkeit;
 - `visibility`: Suche, Filter, Collapse, Fokus und Kontext-Ahnen;
-- `renderer`: Adapter und Custom Nodes für React Flow;
+- `renderer`: Adapter, gemeinsamer Capability-Custom-Node, SVG-Shape-Surface und semantische HTML-Inhaltsebene für React Flow;
 - `export`: formatneutrales Szenenmodell, gemeinsame Export-Tokens und Adapter für PNG, SVG, PDF und PPTX;
 - `editor`: CodeMirror-Integration;
 - `app`: UI-Komposition, lokaler Zustand und Persistenz.
 
-Zwischen `domain`, `layout`, `visibility` und `renderer` dürfen keine React-Abhängigkeiten bestehen, soweit dies fachlich nicht erforderlich ist. Damit bleibt der Rendering-Kern testbar und später wiederverwendbar.
+Zwischen `domain`, `layout`, `shapes` und `visibility` dürfen keine React-Abhängigkeiten bestehen. Der `renderer` bildet diese Ergebnisse ausschließlich auf React Flow, SVG-Fläche und HTML-Inhaltsebene ab. Damit bleiben Layout- und Formgeometrie testbar, exportierbar und später wiederverwendbar.
 
 Der normalisierte Hierarchieindex bildet Capability- und Gruppen-IDs gemeinsam auf Elementart, Eltern-ID und vollständigen Pfad ab. Fokusziel und Breadcrumb verwenden denselben Index, damit Gruppenpfade nicht nachträglich aus der Renderstruktur rekonstruiert werden. Die `visibility`-Schicht leitet daraus die temporären Fokusöffnungen ab, bevor der sichtbare Baum an Bedarfsberechnung und Layout übergeben wird. Der manuelle Collapse-Zustand bleibt dabei unverändert die persistierbare Quelle; Fokusöffnungen bilden eine separate, höher priorisierte Sichtbarkeitsschicht.
 
@@ -697,7 +729,8 @@ Besonders vollständig zu testen sind:
 - gemischte Richtungen auf mehreren Ebenen;
 - kompakte Blattinhalte, deren äußere Boxen unterschiedlich große Slots jeweils vollständig ausfüllen;
 - lückenloses Tiling jeder rekursiven Inhaltsfläche sowie Neuberechnung ausschließlich aus sichtbaren Elementen nach Collapse-, Filter- und Fokusänderungen;
-- Box- und Chevron-Auflösung einschließlich ungültiger Chevrons mit Kindern;
+- Registry-Auflösung bekannter und unbekannter Shape-IDs, Formrestriktionen und Ersatzdarstellungen einschließlich ungültiger Chevrons mit Kindern;
+- deterministische Pfadgeometrie, Konturstärke und sichere Inhaltsbereiche bei kleinen, breiten und hohen Layoutrechten;
 - Filterlogik einschließlich Kontext-Ahnen;
 - Wechselwirkung zwischen Filter und manuellem Collapse;
 - Fokus auf Capability und Gruppe, vollständige Breadcrumb-Pfade einschließlich Gruppen sowie temporäre Öffnung der direkten nächsten Capability-Ebene;
@@ -712,11 +745,12 @@ Besonders vollständig zu testen sind:
 - Beschreibungen erscheinen vollständig im Detailpanel, aber niemals in der Map;
 - Reset und Wiederherstellung aus `localStorage`;
 - Filter-, Suche-, Collapse- und Fokusabläufe.
-- Fokus per Doppelklick auf Box, Chevron und Gruppe ohne sichtbare Fokus-Schaltfläche;
+- Fokus per Doppelklick auf jede registrierte Capability-Form und Gruppe ohne sichtbare Fokus-Schaltfläche;
 - dauerhaft sichtbarer Breadcrumb-Pfad mit Map-Wurzel, Gruppen und Capability-Ahnen;
 - temporäre Fokusöffnung der direkten nächsten Capability-Ebene ohne Mutation des manuellen oder gespeicherten Collapse-Zustands;
 - als normale Boxen dargestellte horizontale Chevron-Konfigurationen ohne Abwärtsindikator oder Verbindungslinie;
-- vertikale Chevron-Wertströme mit grauer Polygonumrandung;
+- vertikale Chevron-Wertströme mit einem einzigen SVG-Pfad, gleichmäßiger grauer Kontur und vollständigen Konturen auch in einer Kette;
+- gemeinsame Inhaltsausrichtung, Interaktionen und zugängliche Namen über Box, Chevron und spätere registrierte Formen hinweg;
 - horizontales und vertikales Gruppen-Rendering auf zwei Ebenen einschließlich getrenntem Collapse-Zustand.
 - Exportaktion, Fortschritts- und Fehlerzustand sowie korrekter Dateiname und MIME-Typ je freigeschaltetem Format.
 
@@ -727,7 +761,8 @@ Besonders vollständig zu testen sind:
 - Referenzbeispiel für das Layout `[H,H,H,V,V,H,H]`;
 - Referenzbeispiele mit mehreren, gemischt ausgerichteten Flushes innerhalb derselben Root-, Gruppen- und `children`-Liste;
 - horizontale und vertikale Gruppen auf zwei Ebenen sowie ihre schmalen Collapse-Platzhalter;
-- kompakte Blätter sowie gemischte Box- und Chevron-Wertstromdarstellungen;
+- kompakte Blätter sowie gemischte Box- und Chevron-Wertstromdarstellungen einschließlich sehr schmaler und sehr flacher Grenzfälle;
+- visuelle Regression der vollständigen Chevron-Kontur an linker Einbuchtung, rechter Spitze und Linienübergängen sowie des definierten Abstands in Chevron-Ketten;
 - tiefer verschachtelte Map mit semantischem Zoom;
 - Download jedes freigeschalteten Exportformats im regulären und im Standalone-Build;
 - Prüfung, dass Viewport-Steuerungen, Editor, Detailpanel, Hover- und Auswahlmarkierungen nicht in der Exportdatei erscheinen;
@@ -779,7 +814,7 @@ Das MVP gilt als abgenommen, wenn:
 15. die Map keine grafische Bearbeitung zulässt und vollständig aus dem YAML reproduzierbar ist;
 16. gruppierte und ungruppierte Root-Capabilities gemeinsam darstellbar sind, Gruppen bis zur zweiten Gruppenebene funktionieren, Gruppenfarben nicht vererbt werden und eingeklappte Gruppen als schmale, vollständig beschriftete Struktur sichtbar bleiben;
 17. Blatt-Capabilities kompakte Inhalte besitzen, ihre äußeren Boxen den zugewiesenen Slot vollständig ausfüllen und Beschreibungen ausschließlich im Detailpanel erscheinen;
-18. vertikale Blatt-Capabilities als vollflächiger Rechts-Chevron mit grauer Polygonumrandung und horizontale Chevron-Konfigurationen vorläufig als normale Box dargestellt werden;
+18. Capability-Formen über denselben erweiterbaren Formenkatalog aufgelöst werden, vertikale Blatt-Capabilities als vollflächiger Rechts-Chevron mit echter, gleichmäßiger grauer SVG-Kontur erscheinen und horizontale Chevron-Konfigurationen vorläufig als normale Box dargestellt werden;
 19. die Referenzdatei alle in Abschnitt 15.4 definierten Varianzmerkmale reproduzierbar abdeckt;
 20. eine Map ohne gespeicherten Ansichtsstatus in „Ebene 1“ startet und alle Ansichtsprofile reproduzierbare Tiefen erzeugen;
 21. der Breadcrumb in fokussierter und nicht fokussierter Ansicht dauerhaft sichtbar ist, Gruppen und Capability-Ahnen vollständig und in korrekter Reihenfolge enthält und die Navigation zu jedem fokussierbaren Ahnen erlaubt;
@@ -794,10 +829,10 @@ Die Exportfunktion erzeugt lokal herunterladbare Dateien in den Formaten PNG, SV
 - Exportiert wird die **aktuell erzeugte fachliche Darstellung** einschließlich des aktiven Ansichtsprofils, Fokus, Filterung sowie Capability- und Gruppen-Collapse-Zustand.
 - Exportiert werden die vollständigen logischen Layoutgrenzen dieser Darstellung, unabhängig vom aktuellen Zoom, Pan und sichtbaren Browserausschnitt.
 - Editor, Detailpanel, Toolbar, React-Flow-Steuerungen, Hintergrundraster, Hover-Zustand, aktuelle Auswahlkontur und sonstige Bedienoberfläche sind nicht Bestandteil der Datei.
-- Fachlich wirksame Darstellungsmerkmale wie Gruppen, Boxen, Chevrons, Farben, Icons, Namen, Zeilenumbrüche, Kontextabblendung und sichtbare Nachfahrenzähler bleiben erhalten.
+- Fachlich wirksame Darstellungsmerkmale wie Gruppen, registrierte Capability-Formen, Farben, Icons, Namen, Zeilenumbrüche, Kontextabblendung und sichtbare Nachfahrenzähler bleiben erhalten.
 - Jedes Format enthält einen Export-Frame mit dem Map-Namen als Titel oberhalb der Darstellung sowie einer Legende und ausgewählten Exportmetadaten. Diese Inhalte gehören zur Exportdatei, nicht zur interaktiven Map und verändern deren Layout nicht.
 - Der Titel steht links oben. Rechts oben erscheinen der Erstellungszeitpunkt mit Zeitzone und das aktive Ansichtsprofil. Ein Fokuspfad und aktive Filter werden nur dann als zusätzliche kompakte Metadatenzeilen ausgegeben, wenn sie tatsächlich aktiv sind.
-- Die Legende steht unterhalb der Map und enthält ausschließlich in der aktuellen Darstellung vorkommende Konzepte. Mögliche Einträge sind Gruppe, Capability-Box, Wertstrom-Chevron, Indikator für verborgene Nachfahren und abgeblendeter Kontext.
+- Die Legende steht unterhalb der Map und enthält ausschließlich in der aktuellen Darstellung vorkommende Konzepte. Mögliche Einträge sind Gruppe, die tatsächlich verwendeten Capability-Formen, Indikator für verborgene Nachfahren und abgeblendeter Kontext. Jede Shape-Legende verwendet die vereinfachte Geometrie aus dem Formenkatalog.
 - Eine aktive reine Textsuche beeinflusst den Export zunächst nicht visuell; Suchkonturen werden nicht exportiert. Filter und Fokus bestimmen dagegen weiterhin den sichtbaren Inhalt.
 - Als Datenquelle dient ausschließlich die letzte gültige Darstellung. Ist die Vorschau wegen ungültigem YAML veraltet, bleibt Export möglich, muss aber vor dem Download deutlich auf den Export der letzten gültigen Version hinweisen.
 - Die Erzeugung erfolgt vollständig im Browser und muss auch im Standalone-Build über `file://` ohne Webserver oder externe Ressourcen funktionieren.
@@ -816,10 +851,10 @@ Vor dem ersten Format wird eine formatneutrale, immutable Export-Repräsentation
 - wirksame Füll-, Text-, Rahmen- und Konturfarben;
 - Namen, Zeilenbegrenzung, Schriftgröße, Ausrichtung und Schriftschnitt;
 - Lucide-Icons als formatsunabhängige Vektorpfade;
-- Box-, Gruppen- und Chevron-Geometrien sowie sichtbare Zustandsindikatoren.
+- Gruppen- und Capability-Geometrien sowie sichtbare Zustandsindikatoren; jede Capability-Geometrie enthält die konfigurierte Shape-ID, die tatsächlich verwendete Darstellungsvariante, den kanonischen Vektorpfad, den sicheren Inhaltsbereich und die Konturparameter;
 - einen expliziten, absoluten Eckenradius je Flächenelement in logischen Export-Einheiten; der Radius darf nicht erst formatspezifisch aus Breite oder Höhe der Form abgeleitet werden.
 
-Das Szenenmodell darf keine DOM-Elemente, React-Komponenten, CSS-Klassen oder React-Flow-Objekte enthalten. Gemeinsame Export-Tokens müssen aus denselben Designwerten wie die Bildschirmdarstellung abgeleitet werden. Die Reihenfolge im Szenenmodell definiert verbindlich die Zeichen- und Überlagerungsreihenfolge aller Formate.
+Das Szenenmodell darf keine DOM-Elemente, React-Komponenten, CSS-Klassen oder React-Flow-Objekte enthalten. Es referenziert keine formatspezifisch erneut zu berechnenden Formpunkte, sondern übernimmt die aufgelöste Geometrie aus dem gemeinsamen Shape-Registry-Modul. Gemeinsame Export-Tokens müssen aus denselben Designwerten wie die Bildschirmdarstellung abgeleitet werden. Die Reihenfolge im Szenenmodell definiert verbindlich die Zeichen- und Überlagerungsreihenfolge aller Formate.
 
 Der Erstellungszeitpunkt wird einmal pro Exportvorgang erzeugt und anschließend unverändert von allen Formatadaptern verwendet. Tests müssen eine injizierbare Uhr verwenden können. Die sichtbare Darstellung nutzt das lokale Datum und die lokale Uhrzeit einschließlich einer eindeutigen Zeitzonenangabe. Filter werden mit Feldbezeichnung und ausgewählten Werten zusammengefasst; der Fokus wird als vollständiger struktureller Pfad einschließlich enthaltener Gruppen und Capability-Ahnen ausgegeben.
 
@@ -838,7 +873,8 @@ Der Erstellungszeitpunkt wird einmal pro Exportvorgang erzeugt und anschließend
 SVG baut auf demselben Szenenmodell auf und stellt die Map als selbstständige Vektordatei bereit.
 
 - Die Wurzel enthält eine deterministische `viewBox` über die vollständigen logischen Layoutgrenzen.
-- Gruppen, Boxen, Chevrons, Rahmen, Texte und Lucide-Icons werden als native SVG-Elemente ausgegeben.
+- Gruppen, registrierte Capability-Formen, Rahmen, Texte und Lucide-Icons werden als native SVG-Elemente ausgegeben.
+- Nicht-rechteckige Capability-Flächen verwenden jeweils einen einzigen nativen SVG-Pfad mit gemeinsamer Füllung und Kontur. Eine aus zwei Polygonen zusammengesetzte Kontursimulation ist auch im Export unzulässig.
 - Texte bleiben als Text erhalten und werden nicht generell in Pfade umgewandelt.
 - Sämtliche Styles und Iconpfade werden eingebettet; die Datei besitzt keine externen Ressourcen, Skripte, Event-Handler oder `foreignObject`-Abhängigkeiten.
 - IDs im SVG sind stabil, dokumentweit eindeutig und aus den fachlichen IDs ableitbar, ohne ungültige XML-Zeichen zu übernehmen.
@@ -864,7 +900,7 @@ Ein transparenter PNG-Hintergrund sowie auswählbare Skalierungsfaktoren wie 1×
 
 PDF verwendet die in Phase 1 freigegebene SVG-Ausgabe als visuelle Quelle und darf nicht lediglich ein komprimiertes PNG in eine PDF-Hülle einbetten.
 
-- Texte, Linien, Flächen, Icons und Chevron-Konturen werden aus dem SVG übernommen und bleiben soweit von der gewählten PDF-Bibliothek unterstützt vektorbasiert.
+- Texte, Linien, Flächen, Icons und Konturen registrierter Capability-Formen werden aus dem SVG übernommen und bleiben soweit von der gewählten PDF-Bibliothek unterstützt vektorbasiert.
 - Eine separate, redundante PDF-Zeichenimplementierung für Capability- oder Gruppengeometrien ist unzulässig. Notwendige PDF-spezifische Transformationen beschränken sich auf Seite, Skalierung, Metadaten und technisch erforderliche SVG-Kompatibilitätsanpassungen.
 - Die erste PDF-Ausbaustufe erzeugt genau eine A3-Seite im Querformat mit umlaufend 10 mm Rand. Der vollständige Export-Frame einschließlich Titel, Legende, Metadaten und aktueller Darstellung wird proportional, zentriert und ohne Beschnitt in die verbleibende Inhaltsfläche eingepasst.
 - Nicht von der Map belegte Restfläche bleibt weiß; das Seitenverhältnis der Darstellung wird niemals verzerrt.
@@ -877,12 +913,13 @@ Eine dynamisch an das Map-Seitenverhältnis angepasste Seitengröße, auswählba
 
 PPTX ist wegen der erforderlichen Editierbarkeit und der Abbildung der verschachtelten Geometrie die letzte und eigenständig freizugebende Formatstufe.
 
-- Die Ausgabe ist keine reine Screenshot-Folie. Gruppen, Capability-Boxen, Chevron-Flächen, Konturen und Texte werden soweit technisch möglich als einzeln bearbeitbare PowerPoint-Formen erzeugt.
+- Die Ausgabe ist keine reine Screenshot-Folie. Gruppen, registrierte Capability-Flächen, Konturen und Texte werden soweit technisch möglich als einzeln bearbeitbare PowerPoint-Formen erzeugt.
 - Capability-Namen bleiben editierbare Textinhalte. Lucide-Icons dürfen als eingebettete SVG-Grafiken vorliegen, sofern eine Umwandlung in editierbare Freiformpfade unverhältnismäßig oder nicht robust ist.
 - Die Bestandteile einer Capability werden, sofern die gewählte Bibliothek dies robust unterstützt, als gemeinsam verschiebbares PowerPoint-Objekt gruppiert. Form, Rahmen und Texte bleiben nach dem Auflösen der Gruppierung einzeln editierbar; das Icon bleibt ein eingebettetes SVG.
 - Visuelle Gruppencontainer bleiben eigenständige editierbare Hintergrundformen mit separatem editierbarem Namen. Eine rekursiv verschachtelte PowerPoint-Gruppierung entlang der fachlichen Hierarchie ist in der ersten Version nicht erforderlich.
 - Fachliche IDs und Hierarchiebezüge werden intern in der Exportzuordnung erhalten, damit Tests und spätere Erweiterungen Elemente eindeutig zuordnen können; sie müssen nicht als sichtbarer Text erscheinen.
 - Die visuelle Zeichenreihenfolge entspricht dem Szenenmodell. Gruppen liegen hinter ihren enthaltenen Capabilities, ohne deren Bearbeitbarkeit zu verhindern.
+- Der Formenkatalog definiert je Shape eine PPTX-Strategie. Ein natives PowerPoint-Preset darf nur verwendet werden, wenn seine Geometrie nachweislich innerhalb der visuellen Toleranz zur kanonischen Form liegt; andernfalls wird aus dem kanonischen Pfad eine einzelne native editierbare Freiform erzeugt. Ein rasterisiertes Bild oder eingebettetes SVG ist für die Capability-Fläche selbst kein zulässiger Fallback.
 - Die erste PPTX-Ausbaustufe erzeugt genau eine 16:9-Breitbildfolie. Der vollständige Export-Frame einschließlich Titel, Legende, Metadaten und aktueller Darstellung wird proportional, zentriert und mit einem umlaufenden Rand von 0,25 Zoll eingepasst; sein Seitenverhältnis wird nicht verzerrt.
 - Die erste PPTX-Ausbaustufe darf nicht umgesetzt werden, bevor durch einen technischen Spike nachgewiesen ist, dass die Referenzmap mit akzeptabler Geometrie-, Text- und Farbfidelität geöffnet und bearbeitet werden kann.
 - Der technische Spike muss insbesondere die robuste Erzeugung, gemeinsame Verschiebbarkeit und spätere Auflösbarkeit der Capability-Objekte bestätigen. Ist dies mit der gewählten Bibliothek nicht zuverlässig möglich, wird vor der PPTX-Implementierung erneut entschieden und nicht stillschweigend auf eine einzige SVG-Grafik ausgewichen.
@@ -900,7 +937,7 @@ Für alle gerundeten Flächen gelten deshalb folgende Regeln:
 - Gruppen der ersten und zweiten Gruppenebene verwenden denselben Gruppenradius. Unterschiedliche Breiten, Höhen, Layout-Richtungen oder Verschachtelungstiefen dürfen die Rundungsstärke nicht verändern.
 - Eingeklappte Gruppen behalten denselben Grundradius und verwenden lediglich die geometrische Begrenzung. Ein kapselartiges Ergebnis ist nur dann zulässig, wenn die kürzere Kante tatsächlich höchstens dem doppelten Designradius entspricht.
 - Rechteckige Capability-Flächen und Gruppencontainer bestehen jeweils aus genau einer nativen editierbaren PowerPoint-Fläche mit gemeinsamem Füll- und Rahmenpfad. Übereinandergelegte Füll- und Rahmenformen mit voneinander abweichenden Radien sind unzulässig.
-- Chevron-Flächen besitzen keinen Eckenradius. Legendenformen verwenden die Geometrie des jeweils erklärten Konzepts in vereinfachter Größe; ein Gruppen-Legendensymbol muss daher ebenfalls einen explizit begrenzten Radius erhalten.
+- Capability-Formen ohne gerundete Ecken, initial der Chevron, besitzen keinen Eckenradius. Legendenformen verwenden die vom Shape-Katalog gelieferte vereinfachte Geometrie des jeweils erklärten Konzepts; ein Gruppen-Legendensymbol muss ebenfalls einen explizit begrenzten Radius erhalten.
 - Trennlinien für Gruppennamen und Capability-Header müssen vollständig innerhalb der zugehörigen Form liegen. Schneidet ihre Position den Bereich einer gerundeten Ecke, werden ihre Endpunkte bis hinter den Eckenbereich eingerückt; der Außenrahmen selbst bleibt unverändert.
 
 Die PPTX-Adaption verwendet folgende technische Priorität:
@@ -960,7 +997,7 @@ Die gesamte Export-Erweiterung gilt als abgeschlossen, wenn:
 1. PNG, SVG, PDF und PPTX über dieselbe formatneutrale Szene dieselbe aktuelle fachliche Darstellung ausgeben;
 2. Zoom, Pan und UI-Chrome die Exportgrenzen nicht beeinflussen;
 3. alle Dateien vollständig lokal und auch im Standalone-Build erzeugt werden;
-4. Farben, Icons, Texte, Umbrüche, Gruppen, Boxen, Chevrons und sichtbare Collapse-Strukturen formatgerecht erhalten bleiben;
+4. Farben, Icons, Texte, Umbrüche, Gruppen, alle in der Darstellung verwendeten registrierten Capability-Formen und sichtbare Collapse-Strukturen formatgerecht erhalten bleiben;
 5. jedes Format seinen korrekten MIME-Typ, Dateinamen und eine nicht leere valide Datei liefert;
 6. SVG keine externen Referenzen oder Skripte enthält;
 7. PDF die vollständige Darstellung ohne Beschnitt auf der vereinbarten Seite enthält und Text soweit vorgesehen extrahierbar bleibt;
@@ -978,13 +1015,14 @@ Priorisierte Weiterentwicklung nach dem MVP:
 3. PDF-Export;
 4. PPTX-Export als letzte Exportphase;
 5. optional native, unmittelbar gruppierbare Lucide-Geometrien im PPTX-Export;
-6. Dateiimport und -download, Laden beim Build sowie Laden über URL;
-7. Datenmengen deutlich oberhalb der verbindlichen 500-Capability-Referenzmap mit weitergehendem Profiling, Virtualisierung oder alternativen Renderstrategien;
-8. visuelle Bearbeitung mit kontrollierter Rückschreibung ins YAML;
-9. Backend, Versionierung und Zusammenarbeit;
-10. mehrere UI-Sprachen;
-11. formale Barrierefreiheit und optimierte Smartphone-Nutzung;
-12. alternative Darstellungen wie Baum oder Treemap.
+6. zusätzliche integrierte Capability-Formen wie Raute, Hexagon, Pfeil oder Pill einschließlich ihrer Formrestriktionen, sicheren Inhaltsbereiche, Legenden und PPTX-Strategien;
+7. Dateiimport und -download, Laden beim Build sowie Laden über URL;
+8. Datenmengen deutlich oberhalb der verbindlichen 500-Capability-Referenzmap mit weitergehendem Profiling, Virtualisierung oder alternativen Renderstrategien;
+9. visuelle Bearbeitung mit kontrollierter Rückschreibung ins YAML;
+10. Backend, Versionierung und Zusammenarbeit;
+11. mehrere UI-Sprachen;
+12. formale Barrierefreiheit und optimierte Smartphone-Nutzung;
+13. alternative Darstellungen wie Baum oder Treemap.
 
 Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 geführt und vor Beginn der jeweiligen Phase bestätigt.
 
@@ -992,6 +1030,10 @@ Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 gef
 
 - [React Flow: Sub Flows](https://reactflow.dev/learn/layouting/sub-flows)
 - [React Flow: Layouting](https://reactflow.dev/learn/layouting/layouting)
+- [React Flow: Custom Nodes](https://reactflow.dev/learn/customization/custom-nodes)
+- [React Flow: NodeProps](https://reactflow.dev/api-reference/types/node-props)
+- [React Flow: Shapes Example](https://reactflow.dev/examples/nodes/shapes)
+- [React Flow: Utility Classes](https://reactflow.dev/learn/customization/utility-classes)
 - [React Flow: Accessibility](https://reactflow.dev/learn/advanced-use/accessibility)
 - [CodeMirror Documentation](https://codemirror.net/docs/)
 - [Vite Features](https://vite.dev/guide/features.html)
@@ -1005,7 +1047,7 @@ Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 gef
 5. Gruppen enthalten mindestens eine Capability, bleiben bei Filtern immer strukturell sichtbar und zeigen ihren vollständigen Namen auch im eingeklappten farbigen Platzhalter.
 6. Gruppen der zweiten Ebene sind ausschließlich direkt in einer Root-Gruppe zulässig. Gruppen innerhalb von Capability-`children` und eine dritte Gruppenebene sind verboten.
 7. Ein `horizontal`-Flush beginnt rechts einen neuen Track; ein `vertical`-Flush beginnt darunter ein neues Band. Jede Elementliste darf beliebig viele Flushes beider Richtungen enthalten und abwechseln. Führende, abschließende und direkt aufeinanderfolgende Flushes sind ungültig.
-8. `visualization.shape: chevron` ist ausschließlich für Blatt-Capabilities zulässig. Vertikale Elemente verwenden einen vollflächigen Rechts-Chevron mit grauer Polygonumrandung; horizontal gestapelte Elemente werden vorläufig vollständig wie normale Boxen dargestellt.
+8. `visualization.shape` referenziert einen integrierten, erweiterbaren Formenkatalog; initial sind `box` und `chevron` zulässig. Der Chevron ist ausschließlich für Blatt-Capabilities zulässig. Vertikale Elemente verwenden einen vollflächigen Rechts-Chevron mit einem einzigen Füll- und Konturpfad; horizontal gestapelte Elemente werden über die katalogisierte Ersatzdarstellung vollständig wie normale Boxen dargestellt.
 9. Explizite `trackWeight`- und `layerWeight`-Werte überschreiben die jeweilige automatische Bedarfsableitung. Automatische Gewichte werden relativ zum Median normalisiert und initial auf `0,5` bis `3` begrenzt.
 10. Das bisherige `layout.weight` wird durch `layout.layerWeight` ersetzt, nicht als Alias unterstützt und als Validierungsfehler mit Migrationshinweis behandelt.
 11. Die komplexe Referenzmap mit circa 500 Capabilities ist zugleich das standardmäßig geladene Startbeispiel und das Ziel von „Auf Beispiel zurücksetzen“.
@@ -1019,7 +1061,7 @@ Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 gef
 19. PNG besitzt in der ersten Version einen weißen Hintergrund und wird mit einem festen Skalierungsfaktor von 2× aus dem SVG rasterisiert. Transparenz und wählbare Auflösungen bleiben mögliche spätere Ausbaustufen.
 20. PDF erzeugt zunächst genau eine A3-Seite im Querformat mit 10 mm Rand und proportional eingepasster aktueller Darstellung. Dynamische Seitengrößen, Formatwahl und Mehrseitenaufteilung bleiben mögliche spätere Ausbaustufen.
 21. PPTX erzeugt zunächst genau eine 16:9-Breitbildfolie mit 0,25 Zoll Rand und proportional eingepasster aktueller Darstellung. Detailfolien, andere Folienformate und Mehrfolienaufteilung bleiben mögliche spätere Ausbaustufen.
-22. PPTX bildet Gruppenflächen, Boxen und Chevrons als native editierbare Formen sowie Namen und Zähler als editierbare Texte ab. Icons werden als SVG eingebettet. Capability-Bestandteile werden möglichst als gemeinsam verschiebbare, auflösbare Objekte gruppiert; rekursiv verschachtelte PowerPoint-Gruppen und editierbare Iconpfade sind nicht Teil der ersten Version.
+22. PPTX bildet Gruppenflächen und registrierte Capability-Formen als native editierbare Formen sowie Namen und Zähler als editierbare Texte ab. Ein geometrisch passendes PowerPoint-Preset wird bevorzugt, andernfalls eine einzelne editierbare Freiform aus dem kanonischen Pfad. Icons werden als SVG eingebettet. Capability-Bestandteile werden möglichst als gemeinsam verschiebbare, auflösbare Objekte gruppiert; rekursiv verschachtelte PowerPoint-Gruppen und editierbare Iconpfade sind nicht Teil der ersten Version.
 23. Alle Exportformate enthalten den Map-Namen als Titel oberhalb der Darstellung sowie eine Legende und ausgewählte Metadaten, insbesondere den Erstellungszeitpunkt. Diese Inhalte werden im gemeinsamen Export-Frame modelliert und formatspezifisch nicht redundant aufgebaut.
 24. Im Export-Frame steht der Map-Name links oben. Rechts oben erscheinen Erstellungszeitpunkt mit Zeitzone und Ansichtsprofil sowie nur bei Bedarf Fokuspfad und aktive Filter. Unterhalb der Map erklärt eine dynamische Legende ausschließlich die tatsächlich vorkommenden Konzepte.
 25. Exportdateien verwenden das Muster `<map-id>-<ansichtsprofil>-YYYYMMDD-HHmmss.<endung>` mit lokalem Exportzeitpunkt. Ein konfigurierbarer Dateinamenpräfix bleibt eine mögliche spätere Ausbaustufe.
@@ -1028,3 +1070,6 @@ Die noch offenen Exportentscheidungen werden formatbezogen in Abschnitt 17.9 gef
 28. Der Fokus auf eine Capability öffnet temporär genau deren direkte nächste Capability-Ebene. Der Gruppenfokus öffnet die fokussierte Gruppe und zeigt ihre direkten Inhalte; direkt enthaltene Capabilities werden dabei nicht ihrerseits automatisch geöffnet. Beide Overrides verändern weder manuelle Collapse-Sets noch Ansichtsprofil oder `localStorage`.
 29. Die Breadcrumb-Navigation ist immer sichtbar. Ohne Fokus zeigt sie nur die Map-Wurzel; mit Fokus zeigt sie den vollständigen strukturellen Pfad einschließlich Gruppen und Capability-Ahnen und erlaubt die Navigation zu jedem fokussierbaren Ahnen.
 30. Fokusziel, Breadcrumb und Exportpfad basieren auf einem gemeinsamen normalisierten Hierarchieindex für Capabilities und Gruppen.
+31. Alle Capability-Formen werden innerhalb eines gemeinsamen React-Flow-Custom-Nodes durch eine SVG-Shape-Surface und eine darüberliegende semantische HTML-Inhaltsebene gerendert. Ein neuer React-Flow-Node-Typ pro Form ist nicht vorgesehen.
+32. Der formatneutrale Shape-Katalog ist die einzige Quelle für Vektorpfad, sicheren Inhaltsbereich, Konturregeln, Ersatzdarstellung, Legendengeometrie und Exportstrategie. Bildschirm- und Exportadapter dürfen Formpunkte nicht separat nachbauen.
+33. Direkt aufeinanderfolgende Rechts-Chevrons überlappen sich nicht, besitzen jeweils eine vollständige gleichmäßige Kontur und werden durch `4` logische Einheiten getrennt. Die Kontur wird niemals durch ineinandergelegte Polygone oder CSS-Clip-Flächen simuliert.

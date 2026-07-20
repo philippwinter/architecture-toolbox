@@ -93,21 +93,32 @@ test('renders value streams in both directions and preserves the collapse anchor
   await page.getByRole('combobox', { name: 'Ansichtstiefe' }).selectOption('level-2');
   const strategy = page.getByRole('article', { name: 'Strategy', exact: true });
   const horizontalStream = page.locator('[data-id="strategy-step-1"] article');
-  await expect(horizontalStream).toHaveClass(/shape-chevron direction-vertical chevron-continues/);
+  await expect(horizontalStream).toHaveClass(/shape-chevron configured-shape-chevron direction-vertical/);
   const verticalChevronStyle = await horizontalStream.locator('.capability-node__surface').evaluate(
     (surface) => ({
-      outlineColor: getComputedStyle(surface).backgroundColor,
-      fillColor: getComputedStyle(surface, '::before').backgroundColor,
+      tagName: surface.tagName,
       clipPath: getComputedStyle(surface).clipPath,
+      polygonCount: surface.querySelectorAll('polygon').length,
+      pathCount: surface.querySelectorAll('.capability-node__shape').length,
+      fill: surface.querySelector('.capability-node__shape')?.getAttribute('fill'),
+      stroke: surface.querySelector('.capability-node__shape')?.getAttribute('stroke'),
+      strokeLinejoin: surface.querySelector('.capability-node__shape')?.getAttribute('stroke-linejoin'),
     }),
   );
-  expect(verticalChevronStyle.outlineColor).not.toBe(verticalChevronStyle.fillColor);
-  expect(verticalChevronStyle.clipPath).not.toBe('none');
+  expect(verticalChevronStyle).toMatchObject({
+    tagName: 'svg',
+    clipPath: 'none',
+    polygonCount: 0,
+    pathCount: 1,
+    fill: '#D7E9F7',
+    stroke: 'rgb(20 30 40 / 21%)',
+    strokeLinejoin: 'round',
+  });
 
   await page.getByRole('combobox', { name: 'Ansichtstiefe' }).selectOption('all');
   const verticalStream = page.locator('[data-id="enterprise-portfolio-step-1"] article');
-  await expect(verticalStream).toHaveClass(/shape-box direction-horizontal/);
-  await expect(verticalStream).not.toHaveClass(/shape-chevron/);
+  await expect(verticalStream).toHaveClass(/shape-box configured-shape-chevron direction-horizontal/);
+  await expect(verticalStream).not.toHaveClass(/(?:^|\s)shape-chevron(?:\s|$)/);
 
   await page.getByRole('combobox', { name: 'Ansichtstiefe' }).selectOption('level-2');
   await page.getByRole('button', { name: 'Fit View' }).click();
@@ -121,13 +132,18 @@ test('renders value streams in both directions and preserves the collapse anchor
     .getByRole('button', { name: 'Strategy einklappen', exact: true })
     .evaluate((element) => (element as HTMLButtonElement).click());
   await expect(page.getByRole('combobox', { name: 'Ansichtstiefe' })).toHaveValue('custom');
-  await page.waitForTimeout(50);
-  const centerAfter = await strategy.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-  });
-  expect(Math.abs(centerAfter.x - centerBefore.x)).toBeLessThan(3);
-  expect(Math.abs(centerAfter.y - centerBefore.y)).toBeLessThan(3);
+  await expect
+    .poll(async () => {
+      const centerAfter = await strategy.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+      return Math.max(
+        Math.abs(centerAfter.x - centerBefore.x),
+        Math.abs(centerAfter.y - centerBefore.y),
+      );
+    })
+    .toBeLessThan(3);
 });
 
 test('tiles an all-collapsed horizontal group track with vertical labels', async ({ page }) => {
@@ -263,7 +279,7 @@ test('keeps SVG capability icons and text vertically centered across renderers',
   await page.setContent(svg);
 
   const alignment = await page.locator('[data-id="strategy"]').evaluate((capability) => {
-    const surface = capability.querySelector(':scope > rect');
+    const surface = capability.querySelector(':scope > path');
     const icon = capability.querySelector(':scope > g[transform]');
     const text = capability.querySelector(':scope > text');
     if (!surface || !icon || !text) throw new Error('SVG capability presentation is incomplete');

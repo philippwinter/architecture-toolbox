@@ -36,7 +36,7 @@ const visualizationSchema = z
   .object({
     color: colorSchema.optional(),
     icon: nonEmptyString.optional(),
-    shape: z.enum(['box', 'chevron']).optional(),
+    shape: nonEmptyString.optional(),
   })
   .strict();
 

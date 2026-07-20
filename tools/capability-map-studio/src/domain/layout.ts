@@ -5,6 +5,11 @@ import type {
   VisibleGroupItem,
   VisibleRootItem,
 } from './types';
+import {
+  capabilityShapeTokens,
+  isRenderedChevron,
+  preferredShapeHorizontalOverhead,
+} from './shapes';
 
 export interface LayoutRect {
   x: number;
@@ -20,7 +25,6 @@ export interface CapabilityLayoutNode {
   parentId?: string;
   renderedChildCount: number;
   hiddenDescendantCount: number;
-  chevronContinues: boolean;
 }
 
 export interface GroupLayoutNode {
@@ -59,6 +63,7 @@ interface IntrinsicSize {
 export interface LayoutTrack {
   kind: 'vertical' | 'horizontal';
   items: VisibleElement[];
+  breakBefore?: boolean;
 }
 
 interface LayoutBand {
@@ -133,22 +138,35 @@ function splitIntoBands(items: ElementList): LayoutBand[] {
 function tokensIntoTracks(tokens: VisibleRootItem[]): LayoutTrack[] {
   const tracks: LayoutTrack[] = [];
   let horizontalBlock: VisibleElement[] = [];
+  let horizontalBlockBreakBefore = false;
+  let breakBeforeNextTrack = false;
   const finishHorizontalBlock = () => {
     if (horizontalBlock.length > 0) {
-      tracks.push({ kind: 'horizontal', items: horizontalBlock });
+      tracks.push({
+        kind: 'horizontal',
+        items: horizontalBlock,
+        breakBefore: horizontalBlockBreakBefore,
+      });
       horizontalBlock = [];
+      horizontalBlockBreakBefore = false;
     }
   };
 
   tokens.forEach((token) => {
     if (token.kind === 'flush') {
       finishHorizontalBlock();
+      breakBeforeNextTrack = true;
       return;
     }
     if (directionOf(token) === 'vertical') {
       finishHorizontalBlock();
-      tracks.push({ kind: 'vertical', items: [token] });
+      tracks.push({ kind: 'vertical', items: [token], breakBefore: breakBeforeNextTrack });
+      breakBeforeNextTrack = false;
     } else {
+      if (horizontalBlock.length === 0) {
+        horizontalBlockBreakBefore = breakBeforeNextTrack;
+        breakBeforeNextTrack = false;
+      }
       horizontalBlock.push(token);
     }
   });
@@ -207,7 +225,13 @@ function intrinsicElement(
           };
     }
   } else if (fachChildren(item).length === 0) {
-    const textWidth = 68 + item.capability.name.length * 6.2;
+    const textWidth =
+      68 +
+      item.capability.name.length * 6.2 +
+      preferredShapeHorizontalOverhead(
+        item.capability.shape,
+        item.capability.layout.direction,
+      );
     size = {
       width: Math.min(MAX_LEAF_WIDTH, Math.max(MIN_LEAF_WIDTH, textWidth)),
       height: config.leafHeight,
@@ -242,8 +266,9 @@ function intrinsicBand(
   cache: Map<VisibleElement, IntrinsicSize>,
 ): IntrinsicSize {
   const sizes = band.tracks.map((track) => intrinsicTrack(track, config, cache));
+  const gaps = trackGaps(band.tracks, config.gap);
   return {
-    width: sizes.reduce((sum, size) => sum + size.width, 0) + config.gap * Math.max(0, sizes.length - 1),
+    width: sizes.reduce((sum, size) => sum + size.width, 0) + gaps.reduce((sum, gap) => sum + gap, 0),
     height: Math.max(0, ...sizes.map((size) => size.height)),
   };
 }
@@ -267,8 +292,15 @@ interface AllocationEntry {
   fixedSize?: number;
 }
 
-function allocateSizes(entries: AllocationEntry[], totalSize: number, gap: number): number[] {
-  const usableSize = Math.max(0, totalSize - gap * Math.max(0, entries.length - 1));
+function allocateSizes(
+  entries: AllocationEntry[],
+  totalSize: number,
+  gapOrGaps: number | number[],
+): number[] {
+  const totalGap = Array.isArray(gapOrGaps)
+    ? gapOrGaps.reduce((sum, gap) => sum + gap, 0)
+    : gapOrGaps * Math.max(0, entries.length - 1);
+  const usableSize = Math.max(0, totalSize - totalGap);
   const fixedSize = entries.reduce((sum, entry) => sum + (entry.fixedSize ?? 0), 0);
   const flexibleSize = Math.max(0, usableSize - fixedSize);
   const automaticPreferred = entries
@@ -283,6 +315,23 @@ function allocateSizes(entries: AllocationEntry[], totalSize: number, gap: numbe
   return entries.map((entry, index) => {
     if (entry.fixedSize !== undefined) return entry.fixedSize;
     return totalWeight > 0 ? (flexibleSize * (weights[index] ?? 0)) / totalWeight : 0;
+  });
+}
+
+function isChevronTrack(track: LayoutTrack): boolean {
+  const item = track.kind === 'vertical' ? track.items[0] : undefined;
+  return Boolean(
+    item?.kind === 'capability' &&
+      isRenderedChevron(item.capability.shape, item.capability.layout.direction),
+  );
+}
+
+function trackGaps(tracks: LayoutTrack[], defaultGap: number): number[] {
+  return tracks.slice(0, -1).map((track, index) => {
+    const next = tracks[index + 1];
+    return next && !next.breakBefore && isChevronTrack(track) && isChevronTrack(next)
+      ? capabilityShapeTokens.chevronSegmentGap
+      : defaultGap;
   });
 }
 
@@ -336,6 +385,7 @@ function layoutList(
   bands.forEach((band, bandIndex) => {
     const bandHeight = bandHeights[bandIndex] ?? 0;
     const trackSizes = band.tracks.map((track) => intrinsicTrack(track, config, cache));
+    const gaps = trackGaps(band.tracks, config.gap);
     const trackWidths = allocateSizes(
       band.tracks.map((track, trackIndex) => ({
         preferred: trackSizes[trackIndex]?.width ?? 1,
@@ -343,7 +393,7 @@ function layoutList(
         fixedSize: fixedTrackWidth(track, config),
       })),
       bounds.width,
-      config.gap,
+      gaps,
     );
     let trackX = bounds.x;
 
@@ -352,18 +402,10 @@ function layoutList(
       if (track.kind === 'vertical') {
         const item = track.items[0];
         if (item) {
-          const nextTrack = band.tracks[trackIndex + 1];
-          const nextItem = nextTrack?.kind === 'vertical' ? nextTrack.items[0] : undefined;
-          const chevronContinues =
-            item.kind === 'capability' &&
-            item.capability.shape === 'chevron' &&
-            nextItem?.kind === 'capability' &&
-            nextItem.capability.shape === 'chevron';
           layoutElement(
             item,
             { x: trackX, y: bandY, width: trackWidth, height: bandHeight },
             parentId,
-            chevronContinues,
             false,
             config,
             cache,
@@ -387,17 +429,10 @@ function layoutList(
         let itemY = bandY;
         track.items.forEach((item, itemIndex) => {
           const itemHeight = itemHeights[itemIndex] ?? 0;
-          const next = track.items[itemIndex + 1];
-          const chevronContinues =
-            item.kind === 'capability' &&
-            item.capability.shape === 'chevron' &&
-            next?.kind === 'capability' &&
-            next.capability.shape === 'chevron';
           layoutElement(
             item,
             { x: trackX, y: itemY, width: trackWidth, height: itemHeight },
             parentId,
-            chevronContinues,
             collapsedTrackFill,
             config,
             cache,
@@ -406,7 +441,7 @@ function layoutList(
           itemY += itemHeight + config.gap;
         });
       }
-      trackX += trackWidth + config.gap;
+      trackX += trackWidth + (gaps[trackIndex] ?? 0);
     });
     bandY += bandHeight + config.gap;
   });
@@ -416,7 +451,6 @@ function layoutElement(
   item: VisibleElement,
   slot: LayoutRect,
   parentId: string | undefined,
-  chevronContinues: boolean,
   collapsedTrackFill: boolean,
   config: Required<LayoutOptions>,
   cache: Map<VisibleElement, IntrinsicSize>,
@@ -479,7 +513,6 @@ function layoutElement(
     parentId,
     renderedChildCount: canRenderChildren ? children.length : 0,
     hiddenDescendantCount: canRenderChildren ? 0 : countVisibleDescendants(item),
-    chevronContinues,
   });
   if (canRenderChildren) {
     layoutList(item.children, childBounds, item.capability.id, config, cache, result);

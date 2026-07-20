@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import '@xyflow/react/dist/style.css';
 import { layoutRootItems } from '../domain/layout';
 import { getCapabilityPresentation } from '../domain/presentation';
+import { resolveCapabilityShape } from '../domain/shapes';
 import type { VisibleRootItem } from '../domain/types';
 import {
   CapabilityGroupNode,
@@ -115,6 +116,12 @@ function MapCanvas({
       }
 
       const { item } = layoutNode;
+      const geometry = resolveCapabilityShape(
+        item.capability.shape,
+        item.capability.layout.direction,
+        rect.width,
+        rect.height,
+      );
       const presentation = getCapabilityPresentation(
         rect.height,
         item.children.some((child) => child.kind !== 'flush'),
@@ -142,7 +149,7 @@ function MapCanvas({
           hiddenDescendantCount: layoutNode.hiddenDescendantCount,
           hasChildren: item.capability.children.some((child) => child.kind === 'capability'),
           focusExpanded: item.capability.id === focusTargetId,
-          chevronContinues: layoutNode.chevronContinues,
+          geometry,
           onToggle: handleToggle,
           onFocus,
         },

@@ -40,7 +40,7 @@ describe('SVG export', () => {
     expect(scene.mapBounds.width).toBeGreaterThanOrEqual(1600);
     expect(scene.mapBounds.height).toBeGreaterThanOrEqual(900);
     expect(scene.legend.map((entry) => entry.kind)).toEqual(
-      expect.arrayContaining(['group', 'capability']),
+      expect.arrayContaining(['group', 'shape:box']),
     );
 
     const nestedCapability = capabilities.find((element) => element.id === 'corporate-development');
@@ -51,6 +51,8 @@ describe('SVG export', () => {
     expect(nestedCapability?.rect.y).toBeGreaterThan(parentGroup?.rect.y ?? 0);
     expect(nestedCapability?.iconNode.length).toBeGreaterThan(0);
     expect(nestedCapability?.cornerRadius).toBe(9);
+    expect(nestedCapability?.renderedShape).toBe('box');
+    expect(nestedCapability?.geometry.path).toContain('A 9 9');
     expect(parentGroup?.cornerRadius).toBe(10);
   });
 
@@ -70,7 +72,8 @@ describe('SVG export', () => {
     expect(document.querySelector('text')?.textContent).toContain('Enterprise Capability Map');
     expect(document.querySelector('[aria-label="Legende"]')).not.toBeNull();
     expect(document.querySelector('[data-id="strategy-governance-group"] rect')?.getAttribute('rx')).toBe('10');
-    expect(document.querySelector('[data-id="strategy"] rect')?.getAttribute('rx')).toBe('9');
+    expect(document.querySelector('[data-id="strategy"]')?.getAttribute('data-shape')).toBe('box');
+    expect(document.querySelector('[data-id="strategy"] > path')?.getAttribute('d')).toContain('A 9 9');
   });
 
   it('uses an explicit portable baseline offset for capability text lines', () => {
@@ -149,8 +152,12 @@ describe('SVG export', () => {
     const verticalStream = document.querySelector('[data-id="strategy-step-1"]');
     const horizontalStream = document.querySelector('[data-id="enterprise-portfolio-step-1"]');
 
-    expect(verticalStream?.querySelectorAll('polygon')).toHaveLength(2);
+    expect(verticalStream?.getAttribute('data-shape')).toBe('chevron');
+    expect(verticalStream?.querySelector('polygon')).toBeNull();
+    expect(verticalStream?.querySelector(':scope > path')?.getAttribute('stroke')).toBe('#141e28');
+    expect(verticalStream?.querySelector(':scope > path')?.getAttribute('stroke-linejoin')).toBe('round');
+    expect(horizontalStream?.getAttribute('data-shape')).toBe('box');
     expect(horizontalStream?.querySelector('polygon')).toBeNull();
-    expect(horizontalStream?.querySelector('rect')).not.toBeNull();
+    expect(horizontalStream?.querySelector(':scope > path')?.getAttribute('d')).toContain('A 9 9');
   });
 });

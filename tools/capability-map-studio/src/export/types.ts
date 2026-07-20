@@ -1,4 +1,5 @@
 import type { IconNode } from 'lucide-react';
+import type { CapabilityShapeGeometry, CapabilityShapeId } from '../domain/shapes';
 import type { CapabilityShape, LayoutDirection } from '../domain/types';
 import type { ViewProfile } from '../domain/viewState';
 
@@ -18,6 +19,8 @@ export interface ExportCapabilityElement {
   color: string;
   textColor: string;
   shape: CapabilityShape;
+  renderedShape: CapabilityShapeId;
+  geometry: CapabilityShapeGeometry;
   direction: LayoutDirection;
   iconNode: IconNode;
   compact: boolean;
@@ -25,7 +28,6 @@ export interface ExportCapabilityElement {
   nameLineCount: number;
   hiddenDescendantCount: number;
   contextOnly: boolean;
-  chevronContinues: boolean;
 }
 
 export interface ExportGroupElement {
@@ -46,14 +48,14 @@ export type ExportSceneElement = ExportCapabilityElement | ExportGroupElement;
 
 export type ExportLegendKind =
   | 'group'
-  | 'capability'
-  | 'value-stream'
+  | `shape:${CapabilityShapeId}`
   | 'hidden-descendants'
   | 'context';
 
 export interface ExportLegendEntry {
   kind: ExportLegendKind;
   label: string;
+  shapeId?: CapabilityShapeId;
 }
 
 export interface ExportScene {

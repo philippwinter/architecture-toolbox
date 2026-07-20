@@ -155,6 +155,47 @@ describe('capability layout', () => {
     expect(byId.get(long.capability.id)?.width).toBeGreaterThan(byId.get('short')?.width ?? 0);
   });
 
+  it('separates consecutive rendered chevrons by four units without overlap', () => {
+    const first = item('first-chevron', 'vertical');
+    const second = item('second-chevron', 'vertical');
+    const box = item('box', 'vertical');
+    first.capability.shape = 'chevron';
+    second.capability.shape = 'chevron';
+
+    const layout = layoutCapabilityTree([first, second, box], {
+      width: 600,
+      height: 200,
+      gap: 12,
+    });
+    const byId = new Map(layout.map((node) => [node.item.capability.id, node.rect]));
+    const firstRect = byId.get('first-chevron');
+    const secondRect = byId.get('second-chevron');
+    const boxRect = byId.get('box');
+
+    expect((secondRect?.x ?? 0) - ((firstRect?.x ?? 0) + (firstRect?.width ?? 0))).toBeCloseTo(4);
+    expect((boxRect?.x ?? 0) - ((secondRect?.x ?? 0) + (secondRect?.width ?? 0))).toBeCloseTo(12);
+    expect((boxRect?.x ?? 0) + (boxRect?.width ?? 0)).toBeCloseTo(600);
+  });
+
+  it('lets a flush interrupt the compact chevron chain gap', () => {
+    const first = item('first-chevron', 'vertical');
+    const second = item('second-chevron', 'vertical');
+    first.capability.shape = 'chevron';
+    second.capability.shape = 'chevron';
+    const roots: VisibleRootItem[] = [
+      first,
+      { kind: 'flush', direction: 'horizontal' },
+      second,
+    ];
+
+    const layout = layoutRootItems(roots, { width: 400, height: 200, gap: 12 });
+    const capabilities = layout.filter((node) => node.kind === 'capability');
+    const firstRect = capabilities[0]?.rect;
+    const secondRect = capabilities[1]?.rect;
+
+    expect((secondRect?.x ?? 0) - ((firstRect?.x ?? 0) + (firstRect?.width ?? 0))).toBeCloseTo(12);
+  });
+
   it('applies equal top and bottom padding around nested capabilities', () => {
     const child = item('child', 'vertical');
     const parent = item('parent', 'vertical');

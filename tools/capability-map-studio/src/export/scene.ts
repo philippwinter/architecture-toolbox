@@ -1,6 +1,10 @@
 import { getCapabilityIconNode } from '../domain/icons';
 import { layoutRootItems, type LayoutRect } from '../domain/layout';
 import { getCapabilityPresentation } from '../domain/presentation';
+import {
+  getCapabilityShapeDefinition,
+  resolveCapabilityShape,
+} from '../domain/shapes';
 import type {
   FilterOption,
   FilterSelection,
@@ -92,11 +96,12 @@ function buildLegend(elements: ExportSceneElement[]): ExportLegendEntry[] {
   if (elements.some((element) => element.kind === 'group')) {
     entries.push({ kind: 'group', label: 'Gruppe' });
   }
-  if (capabilities.some((element) => element.shape !== 'chevron' || element.direction !== 'vertical')) {
-    entries.push({ kind: 'capability', label: 'Capability' });
-  }
-  if (capabilities.some((element) => element.shape === 'chevron' && element.direction === 'vertical')) {
-    entries.push({ kind: 'value-stream', label: 'Wertstrom' });
+  const renderedShapes = new Set(capabilities.map((element) => element.renderedShape));
+  for (const shapeId of renderedShapes) {
+    const definition = getCapabilityShapeDefinition(shapeId);
+    if (definition) {
+      entries.push({ kind: `shape:${shapeId}`, label: definition.legendLabel, shapeId });
+    }
   }
   if (capabilities.some((element) => element.hiddenDescendantCount > 0)) {
     entries.push({ kind: 'hidden-descendants', label: 'Ausgeblendete Nachfahren' });
@@ -144,15 +149,23 @@ export function buildExportScene({
               rect.height,
               node.item.children.some((child) => child.kind !== 'flush'),
             );
+            const geometry = resolveCapabilityShape(
+              node.item.capability.shape,
+              node.item.capability.layout.direction,
+              rect.width,
+              rect.height,
+            );
             return {
               kind: 'capability',
               id: node.item.capability.id,
               name: node.item.capability.name,
               rect,
-              cornerRadius: EXPORT_CORNER_RADII.capability,
+              cornerRadius: geometry.cornerRadius,
               color: node.item.capability.color,
               textColor: readableTextColor(node.item.capability.color),
               shape: node.item.capability.shape,
+              renderedShape: geometry.renderedShapeId,
+              geometry,
               direction: node.item.capability.layout.direction,
               iconNode: getCapabilityIconNode(node.item.capability.icon),
               compact: presentation.compact,
@@ -160,7 +173,6 @@ export function buildExportScene({
               nameLineCount: presentation.nameLineCount,
               hiddenDescendantCount: node.hiddenDescendantCount,
               contextOnly: node.item.contextOnly,
-              chevronContinues: node.chevronContinues,
             };
           })();
     positioned.set(idOf(element), element);

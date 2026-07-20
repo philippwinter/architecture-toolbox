@@ -4,6 +4,7 @@ import {
   capabilityPresentationTokens,
   groupPresentationTokens,
 } from '../domain/presentation';
+import { resolveCapabilityShapeLegend } from '../domain/shapes';
 import type { BuildExportSceneOptions } from './scene';
 import type {
   ExportCapabilityElement,
@@ -273,12 +274,25 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
 
   const renderCapability = (element: ExportCapabilityElement) => {
     const rect = positionRect(element.rect);
-    const renderedChevron = element.shape === 'chevron' && element.direction === 'vertical';
+    const geometry = element.geometry;
+    const renderedChevron = element.renderedShape === 'chevron';
+    const contentRect: ExportRect = {
+      x: rect.x + geometry.contentRect.x,
+      y: rect.y + geometry.contentRect.y,
+      width: geometry.contentRect.width,
+      height: geometry.contentRect.height,
+    };
     const transparency = element.contextOnly ? 52 : 0;
-    const cornerRadius = effectiveCornerRadius(element.cornerRadius, rect);
-    slide.addShape(renderedChevron ? presentation.ShapeType.chevron : presentation.ShapeType.roundRect, {
+    const cornerRadius = effectiveCornerRadius(geometry.cornerRadius, rect);
+    if (geometry.pptxStrategy.kind !== 'preset') {
+      throw new Error(`Für die Capability-Form „${element.renderedShape}“ fehlt eine PPTX-Freiformstrategie.`);
+    }
+    const shapeType = geometry.pptxStrategy.preset === 'chevron'
+      ? presentation.ShapeType.chevron
+      : presentation.ShapeType.roundRect;
+    slide.addShape(shapeType, {
       x: x(rect.x), y: y(rect.y),
-      w: size(rect.width + (renderedChevron && element.chevronContinues ? 8 : 0)),
+      w: size(rect.width),
       h: size(rect.height),
       objectName: `${element.id} capability surface`,
       fill: { color: color(element.color), transparency },
@@ -286,34 +300,34 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
       rectRadius: renderedChevron ? undefined : size(cornerRadius),
     });
     const headerHeight = element.compact
-      ? rect.height
-      : Math.min(capabilityPresentationTokens.regularHeaderHeight, rect.height);
-    const leftPadding = renderedChevron ? 25 : element.compact ? 7 : 9;
-    const rightPadding = renderedChevron ? 25 : 9;
+      ? contentRect.height
+      : Math.min(capabilityPresentationTokens.regularHeaderHeight, contentRect.height);
+    const leftPadding = element.compact ? 7 : 9;
+    const rightPadding = 9;
     const iconSize = element.compact
       ? capabilityPresentationTokens.compactIconSize
       : capabilityPresentationTokens.regularIconSize;
-    const showIcon = !element.minimal && rect.width >= leftPadding + rightPadding + iconSize + 18;
+    const showIcon = !element.minimal && contentRect.width >= leftPadding + rightPadding + iconSize + 18;
     if (
       !element.compact &&
       !renderedChevron &&
-      rect.height > capabilityPresentationTokens.regularHeaderHeight
+      contentRect.height > capabilityPresentationTokens.regularHeaderHeight
     ) {
       slide.addShape(presentation.ShapeType.line, {
-        x: x(rect.x),
-        y: y(rect.y + capabilityPresentationTokens.regularHeaderHeight),
-        w: size(rect.width),
+        x: x(contentRect.x),
+        y: y(contentRect.y + capabilityPresentationTokens.regularHeaderHeight),
+        w: size(contentRect.width),
         h: 0,
         objectName: `${element.id} header divider`,
         line: { color: '141E28', transparency: 87, width: 0.5 },
       });
     }
-    const iconX = rect.x + leftPadding;
+    const iconX = contentRect.x + leftPadding;
     if (showIcon) {
       slide.addImage({
         data: iconData(element.iconNode, element.textColor),
         x: x(iconX),
-        y: y(rect.y + (headerHeight - iconSize) / 2),
+        y: y(contentRect.y + (headerHeight - iconSize) / 2),
         w: size(iconSize),
         h: size(iconSize),
         objectName: `${element.id} icon`,
@@ -323,8 +337,8 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
     }
     const textX = showIcon
       ? iconX + iconSize + capabilityPresentationTokens.iconTextGap
-      : rect.x + leftPadding;
-    const availableTextWidth = Math.max(1, rect.x + rect.width - rightPadding - textX);
+      : contentRect.x + leftPadding;
+    const availableTextWidth = Math.max(1, contentRect.x + contentRect.width - rightPadding - textX);
     const fontSize = element.minimal
       ? capabilityPresentationTokens.minimalNameFontSize
       : element.compact
@@ -332,9 +346,9 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
         : capabilityPresentationTokens.regularNameFontSize;
     const lines = wrapText(element.name, availableTextWidth, fontSize, element.nameLineCount);
     addText(lines.join('\n'), {
-      x: element.minimal ? rect.x + leftPadding : textX,
-      y: rect.y,
-      width: element.minimal ? rect.width - leftPadding - rightPadding : availableTextWidth,
+      x: element.minimal ? contentRect.x + leftPadding : textX,
+      y: contentRect.y,
+      width: element.minimal ? contentRect.width - leftPadding - rightPadding : availableTextWidth,
       height: headerHeight,
     }, {
       objectName: `${element.id} capability name`,
@@ -346,9 +360,9 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
       wrap: true,
       transparency,
     });
-    if (element.hiddenDescendantCount > 0 && rect.width >= 42 && rect.height >= 24) {
+    if (element.hiddenDescendantCount > 0 && contentRect.width >= 42 && contentRect.height >= 24) {
       slide.addShape(presentation.ShapeType.roundRect, {
-        x: x(rect.x + rect.width - 35), y: y(rect.y + rect.height - 20),
+        x: x(contentRect.x + contentRect.width - 35), y: y(contentRect.y + contentRect.height - 20),
         w: size(28), h: size(14),
         objectName: `${element.id} hidden descendants badge`,
         fill: { color: 'FFFFFF', transparency: 75 },
@@ -356,8 +370,8 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
         rectRadius: size(EXPORT_CORNER_RADII.hiddenBadge),
       });
       addText(`+${element.hiddenDescendantCount}`, {
-        x: rect.x + rect.width - 35,
-        y: rect.y + rect.height - 20,
+        x: contentRect.x + contentRect.width - 35,
+        y: contentRect.y + contentRect.height - 20,
         width: 28,
         height: 14,
       }, {
@@ -378,10 +392,19 @@ function renderPresentation(scene: ExportScene, presentation: PptxGenJS): PptxPl
     const legendY = scene.mapBounds.y + scene.mapBounds.height + 28;
     const renderLegendSymbol = (entry: ExportLegendEntry) => {
       const objectName = `Legend ${entry.kind}`;
-      if (entry.kind === 'value-stream') {
-        slide.addShape(presentation.ShapeType.chevron, {
+      if (entry.shapeId) {
+        const geometry = resolveCapabilityShapeLegend(entry.shapeId);
+        if (geometry.pptxStrategy.kind !== 'preset') {
+          throw new Error(`Für die Legendenform „${entry.shapeId}“ fehlt eine PPTX-Freiformstrategie.`);
+        }
+        slide.addShape(
+          geometry.pptxStrategy.preset === 'chevron'
+            ? presentation.ShapeType.chevron
+            : presentation.ShapeType.roundRect,
+          {
           x: x(legendX), y: y(legendY), w: size(20), h: size(14), objectName,
-          fill: { color: '7BA9A0' }, line: { color: '52606D', transparency: 44, width: 0.5 },
+          fill: { color: '7BA9A0' }, line: { color: '141E28', transparency: 79, width: 0.5 },
+          rectRadius: geometry.renderedShapeId === 'box' ? size(geometry.cornerRadius) : undefined,
         });
       } else {
         const symbolColor = entry.kind === 'group' ? 'E6EBEF' : entry.kind === 'hidden-descendants' ? 'DCEEE9' : '7BA9A0';

@@ -2,6 +2,11 @@ import { isNode, LineCounter, parseDocument, type Document, type Node } from 'ya
 import { hasCapabilityIcon } from './icons';
 import { buildHierarchyIndex } from './hierarchy';
 import { capabilityMapSchema } from './schema';
+import {
+  getCapabilityShapeDefinition,
+  isCapabilityShapeId,
+  type CapabilityShapeId,
+} from './shapes';
 import type {
   CapabilityChildInput,
   CapabilityGroupInput,
@@ -90,7 +95,7 @@ function normalizeCapability(
     color,
     explicitIcon: input.visualization?.icon,
     icon,
-    shape: input.visualization?.shape ?? 'box',
+    shape: normalizeShapeId(input.visualization?.shape),
     layout: {
       direction: input.layout?.direction ?? 'vertical',
       layerWeight: input.layout?.layerWeight,
@@ -123,6 +128,10 @@ function normalizeCapability(
     0,
   );
   return capability;
+}
+
+function normalizeShapeId(value: string | undefined): CapabilityShapeId {
+  return value && isCapabilityShapeId(value) ? value : 'box';
 }
 
 function countCapabilities(items: NormalizedGroupItem[]): number {
@@ -300,10 +309,17 @@ function collectSemanticDiagnostics(
         );
       }
       const childCapabilities = (item.children ?? []).filter((child) => !isFlushInput(child));
-      if (item.visualization?.shape === 'chevron' && childCapabilities.length > 0) {
+      const shapeId = item.visualization?.shape ?? 'box';
+      const shapeDefinition = getCapabilityShapeDefinition(shapeId);
+      if (!shapeDefinition) {
         addError(
           [...path, 'visualization', 'shape'],
-          'Chevrons sind nur für Blatt-Capabilities erlaubt. Entferne die Children oder verwende shape: box.',
+          `Unbekannte Capability-Form „${shapeId}“. Verfügbar sind: box, chevron.`,
+        );
+      } else if (shapeDefinition.leafOnly && childCapabilities.length > 0) {
+        addError(
+          [...path, 'visualization', 'shape'],
+          `${shapeDefinition.displayName}s sind nur für Blatt-Capabilities erlaubt. Entferne die Children oder verwende shape: box.`,
         );
       }
       if (item.children) visitCapabilities(item.children, [...path, 'children']);

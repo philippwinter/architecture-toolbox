@@ -1,5 +1,7 @@
+import type { CapabilityShapeId } from './shapes';
+
 export type LayoutDirection = 'horizontal' | 'vertical';
-export type CapabilityShape = 'box' | 'chevron';
+export type CapabilityShape = CapabilityShapeId;
 
 export type MetadataValue =
   | boolean
@@ -24,7 +26,7 @@ export interface CapabilityInput {
   visualization?: {
     color?: string;
     icon?: string;
-    shape?: CapabilityShape;
+    shape?: string;
   };
   layout?: {
     direction?: LayoutDirection;

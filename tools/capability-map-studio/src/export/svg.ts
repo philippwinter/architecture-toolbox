@@ -3,6 +3,7 @@ import {
   capabilityPresentationTokens,
   groupPresentationTokens,
 } from '../domain/presentation';
+import { resolveCapabilityShapeLegend } from '../domain/shapes';
 import type {
   ExportCapabilityElement,
   ExportGroupElement,
@@ -120,69 +121,50 @@ function renderIcon(iconNode: IconNode, x: number, y: number, size: number, colo
   return `<g transform="translate(${number(x)} ${number(y)}) scale(${number(size / 24)})" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${children}</g>`;
 }
 
-function chevronPoints(rect: ExportRect, inset = 0): string {
-  const width = Math.max(1, rect.width - inset * 2);
-  const height = Math.max(1, rect.height - inset * 2);
-  const x = rect.x + inset;
-  const y = rect.y + inset;
-  const tip = Math.min(22, width * 0.22, height * 0.4);
-  const notch = Math.min(18, width * 0.18, height * 0.34);
-  return [
-    [x, y],
-    [x + width - tip, y],
-    [x + width, y + height / 2],
-    [x + width - tip, y + height],
-    [x, y + height],
-    [x + notch, y + height / 2],
-  ]
-    .map(([pointX, pointY]) => `${number(pointX ?? 0)},${number(pointY ?? 0)}`)
-    .join(' ');
-}
-
 function renderCapability(element: ExportCapabilityElement, offsetX: number, offsetY: number): string {
   const rect = {
     ...element.rect,
     x: element.rect.x + offsetX,
     y: element.rect.y + offsetY,
   };
-  const renderedChevron = element.shape === 'chevron' && element.direction === 'vertical';
-  const displayRect = renderedChevron && element.chevronContinues
-    ? { ...rect, width: rect.width + 8 }
-    : rect;
+  const geometry = element.geometry;
+  const contentRect: ExportRect = {
+    x: rect.x + geometry.contentRect.x,
+    y: rect.y + geometry.contentRect.y,
+    width: geometry.contentRect.width,
+    height: geometry.contentRect.height,
+  };
   const opacity = element.contextOnly ? 0.48 : 1;
-  const cornerRadius = effectiveCornerRadius(element.cornerRadius, rect);
-  const surface = renderedChevron
-    ? `<polygon points="${chevronPoints(displayRect)}" fill="#52606d" fill-opacity=".56"/><polygon points="${chevronPoints(displayRect, 1)}" fill="${element.color}"/>`
-    : `<rect x="${number(rect.x)}" y="${number(rect.y)}" width="${number(rect.width)}" height="${number(rect.height)}" rx="${number(cornerRadius)}" fill="${element.color}" stroke="#141e28" stroke-opacity=".21"/><path d="M ${number(rect.x + cornerRadius)} ${number(rect.y + 1)} H ${number(rect.x + rect.width - cornerRadius)}" stroke="#ffffff" stroke-opacity=".14"/>`;
+  const surface = `<path d="${geometry.path}" transform="translate(${number(rect.x)} ${number(rect.y)})" fill="${element.color}" stroke="#141e28" stroke-opacity=".21" stroke-width="${number(geometry.strokeWidth)}" stroke-linejoin="${geometry.strokeLinejoin}"/>`;
   const headerHeight = element.compact
-    ? rect.height
-    : Math.min(capabilityPresentationTokens.regularHeaderHeight, rect.height);
-  const leftPadding = renderedChevron ? 25 : element.compact ? 7 : 9;
-  const rightPadding = renderedChevron ? 25 : 9;
+    ? contentRect.height
+    : Math.min(capabilityPresentationTokens.regularHeaderHeight, contentRect.height);
+  const leftPadding = element.compact ? 7 : 9;
+  const rightPadding = 9;
   const iconSize = element.compact
     ? capabilityPresentationTokens.compactIconSize
     : capabilityPresentationTokens.regularIconSize;
-  const showIcon = !element.minimal && rect.width >= leftPadding + rightPadding + iconSize + 18;
-  const iconX = rect.x + leftPadding;
-  const iconY = rect.y + (headerHeight - iconSize) / 2;
+  const showIcon = !element.minimal && contentRect.width >= leftPadding + rightPadding + iconSize + 18;
+  const iconX = contentRect.x + leftPadding;
+  const iconY = contentRect.y + (headerHeight - iconSize) / 2;
   const textX = showIcon
     ? iconX + iconSize + capabilityPresentationTokens.iconTextGap
-    : rect.x + leftPadding;
-  const availableTextWidth = Math.max(1, rect.x + rect.width - rightPadding - textX);
+    : contentRect.x + leftPadding;
+  const availableTextWidth = Math.max(1, contentRect.x + contentRect.width - rightPadding - textX);
   const fontSize = element.minimal
     ? capabilityPresentationTokens.minimalNameFontSize
     : element.compact
       ? capabilityPresentationTokens.compactNameFontSize
       : capabilityPresentationTokens.regularNameFontSize;
   const lines = wrapText(element.name, availableTextWidth, fontSize, element.nameLineCount);
-  const headerDivider = !element.compact && !renderedChevron && rect.height > capabilityPresentationTokens.regularHeaderHeight
-    ? `<line x1="${number(rect.x)}" y1="${number(rect.y + capabilityPresentationTokens.regularHeaderHeight)}" x2="${number(rect.x + rect.width)}" y2="${number(rect.y + capabilityPresentationTokens.regularHeaderHeight)}" stroke="#141e28" stroke-opacity=".13"/>`
+  const headerDivider = !element.compact && element.renderedShape === 'box' && contentRect.height > capabilityPresentationTokens.regularHeaderHeight
+    ? `<line x1="${number(contentRect.x)}" y1="${number(contentRect.y + capabilityPresentationTokens.regularHeaderHeight)}" x2="${number(contentRect.x + contentRect.width)}" y2="${number(contentRect.y + capabilityPresentationTokens.regularHeaderHeight)}" stroke="#141e28" stroke-opacity=".13"/>`
     : '';
-  const hidden = element.hiddenDescendantCount > 0 && rect.width >= 42 && rect.height >= 24
-    ? `<g><rect x="${number(rect.x + rect.width - 35)}" y="${number(rect.y + rect.height - 20)}" width="28" height="14" rx="7" fill="#ffffff" fill-opacity=".25"/><text x="${number(rect.x + rect.width - 21)}" y="${number(rect.y + rect.height - 13)}" fill="${element.textColor}" font-family="${FONT_FAMILY}" font-size="9" font-weight="700" text-anchor="middle" dominant-baseline="middle">+${element.hiddenDescendantCount}</text></g>`
+  const hidden = element.hiddenDescendantCount > 0 && contentRect.width >= 42 && contentRect.height >= 24
+    ? `<g><rect x="${number(contentRect.x + contentRect.width - 35)}" y="${number(contentRect.y + contentRect.height - 20)}" width="28" height="14" rx="7" fill="#ffffff" fill-opacity=".25"/><text x="${number(contentRect.x + contentRect.width - 21)}" y="${number(contentRect.y + contentRect.height - 13)}" fill="${element.textColor}" font-family="${FONT_FAMILY}" font-size="9" font-weight="700" text-anchor="middle" dominant-baseline="middle">+${element.hiddenDescendantCount}</text></g>`
     : '';
 
-  return `<g data-kind="capability" data-id="${escapeXml(element.id)}" opacity="${opacity}">${surface}${headerDivider}${showIcon ? renderIcon(element.iconNode, iconX, iconY, iconSize, element.textColor) : ''}${textLines(lines, element.minimal ? rect.x + rect.width / 2 : textX, rect.y + headerHeight / 2, fontSize, element.textColor, element.minimal ? 'middle' : 'start')}${hidden}</g>`;
+  return `<g data-kind="capability" data-id="${escapeXml(element.id)}" data-shape="${geometry.renderedShapeId}" opacity="${opacity}">${surface}${headerDivider}${showIcon ? renderIcon(element.iconNode, iconX, iconY, iconSize, element.textColor) : ''}${textLines(lines, element.minimal ? contentRect.x + contentRect.width / 2 : textX, contentRect.y + headerHeight / 2, fontSize, element.textColor, element.minimal ? 'middle' : 'start')}${hidden}</g>`;
 }
 
 function renderVerticalLabel(name: string, rect: ExportRect, color: string, fontSize: number): string {
@@ -244,11 +226,13 @@ function renderGroup(element: ExportGroupElement, offsetX: number, offsetY: numb
 }
 
 function renderLegendSymbol(entry: ExportLegendEntry, x: number, y: number): string {
+  if (entry.shapeId) {
+    const geometry = resolveCapabilityShapeLegend(entry.shapeId);
+    return `<path d="${geometry.path}" transform="translate(${x} ${y - 7})" fill="#7ba9a0" stroke="#141e28" stroke-opacity=".21" stroke-width="${number(geometry.strokeWidth)}" stroke-linejoin="${geometry.strokeLinejoin}"/>`;
+  }
   switch (entry.kind) {
     case 'group':
       return `<rect x="${x}" y="${y - 7}" width="18" height="14" rx="${EXPORT_CORNER_RADII.legend}" fill="#e6ebef" stroke="#89939f"/>`;
-    case 'value-stream':
-      return `<polygon points="${x},${y - 7} ${x + 14},${y - 7} ${x + 20},${y} ${x + 14},${y + 7} ${x},${y + 7} ${x + 5},${y}" fill="#7ba9a0" stroke="#52606d" stroke-opacity=".56"/>`;
     case 'hidden-descendants':
       return `<rect x="${x}" y="${y - 7}" width="21" height="14" rx="${EXPORT_CORNER_RADII.hiddenBadge}" fill="#dceee9"/><text x="${x + 10.5}" y="${y}" fill="#176b5b" font-family="${FONT_FAMILY}" font-size="8" font-weight="700" text-anchor="middle" dominant-baseline="middle">+3</text>`;
     case 'context':

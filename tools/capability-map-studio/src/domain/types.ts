@@ -173,6 +173,7 @@ export interface VisibleCapability {
   contextOnly: boolean;
   searchMatch: boolean;
   collapsed: boolean;
+  hiddenDescendantCount?: number;
 }
 
 export type VisibleCapabilityChild = VisibleCapability | VisibleFlush;

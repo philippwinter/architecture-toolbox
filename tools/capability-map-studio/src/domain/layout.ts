@@ -33,6 +33,7 @@ export interface GroupLayoutNode {
   rect: LayoutRect;
   labelSize: number;
   collapsedTrackFill: boolean;
+  collapsedBandFill: boolean;
   parentId?: string;
 }
 
@@ -199,6 +200,16 @@ function collapsedGroupIntrinsic(
     : { width: nameWidth, height: config.collapsedGroupSize };
 }
 
+function collapsedGroupNameDemand(
+  item: VisibleCapabilityGroup,
+  config: Required<LayoutOptions>,
+): number {
+  return Math.max(
+    config.groupLabelWidth,
+    GROUP_LABEL_PADDING + item.group.name.length * GROUP_LABEL_AVERAGE_CHARACTER_WIDTH,
+  );
+}
+
 function intrinsicElement(
   item: VisibleElement,
   config: Required<LayoutOptions>,
@@ -335,6 +346,33 @@ function trackGaps(tracks: LayoutTrack[], defaultGap: number): number[] {
   });
 }
 
+function isCollapsedVerticalGroupBand(band: LayoutBand): boolean {
+  return band.tracks.length > 0 && band.tracks.every((track) => {
+    const item = track.kind === 'vertical' ? track.items[0] : undefined;
+    return item?.kind === 'group' && item.collapsed && directionOf(item) === 'vertical';
+  });
+}
+
+function collapsedVerticalBandHeight(
+  band: LayoutBand,
+  availableWidth: number,
+  config: Required<LayoutOptions>,
+): number {
+  const gaps = trackGaps(band.tracks, config.gap);
+  const usableWidth = Math.max(
+    1,
+    availableWidth - gaps.reduce((sum, gap) => sum + gap, 0),
+  );
+  const totalNameDemand = band.tracks.reduce((sum, track) => {
+    const item = track.items[0];
+    return sum + (
+      item?.kind === 'group' ? collapsedGroupNameDemand(item, config) : 0
+    );
+  }, 0);
+  const lineCount = Math.max(1, Math.ceil(totalNameDemand / usableWidth));
+  return config.collapsedGroupSize + (lineCount - 1) * 14;
+}
+
 function groupLabelSize(
   item: VisibleCapabilityGroup,
   rect: LayoutRect,
@@ -375,8 +413,15 @@ function layoutList(
   if (bounds.width <= 0 || bounds.height <= 0) return;
   const bands = splitIntoBands(items);
   const bandSizes = bands.map((band) => intrinsicBand(band, config, cache));
+  const collapsedVerticalBands = bands.map(isCollapsedVerticalGroupBand);
   const bandHeights = allocateSizes(
-    bandSizes.map((size) => ({ preferred: size.height, explicitWeight: Math.max(1, size.height) })),
+    bandSizes.map((size, index) => ({
+      preferred: size.height,
+      explicitWeight: collapsedVerticalBands[index] ? undefined : Math.max(1, size.height),
+      fixedSize: collapsedVerticalBands[index]
+        ? collapsedVerticalBandHeight(bands[index] as LayoutBand, bounds.width, config)
+        : undefined,
+    })),
     bounds.height,
     config.gap,
   );
@@ -386,11 +431,19 @@ function layoutList(
     const bandHeight = bandHeights[bandIndex] ?? 0;
     const trackSizes = band.tracks.map((track) => intrinsicTrack(track, config, cache));
     const gaps = trackGaps(band.tracks, config.gap);
+    const collapsedBandFill = collapsedVerticalBands[bandIndex] ?? false;
     const trackWidths = allocateSizes(
       band.tracks.map((track, trackIndex) => ({
-        preferred: trackSizes[trackIndex]?.width ?? 1,
-        explicitWeight: trackWeightOf(track.items[0] as VisibleElement),
-        fixedSize: fixedTrackWidth(track, config),
+        preferred: collapsedBandFill
+          ? collapsedGroupNameDemand(
+              track.items[0] as VisibleCapabilityGroup,
+              config,
+            )
+          : trackSizes[trackIndex]?.width ?? 1,
+        explicitWeight: collapsedBandFill
+          ? undefined
+          : trackWeightOf(track.items[0] as VisibleElement),
+        fixedSize: collapsedBandFill ? undefined : fixedTrackWidth(track, config),
       })),
       bounds.width,
       gaps,
@@ -407,6 +460,7 @@ function layoutList(
             { x: trackX, y: bandY, width: trackWidth, height: bandHeight },
             parentId,
             false,
+            collapsedBandFill,
             config,
             cache,
             result,
@@ -419,8 +473,10 @@ function layoutList(
         const itemSizes = track.items.map((item) => intrinsicElement(item, config, cache));
         const itemHeights = allocateSizes(
           track.items.map((item, itemIndex) => ({
-            preferred: itemSizes[itemIndex]?.height ?? 1,
-            explicitWeight: layerWeightOf(item),
+            preferred: collapsedTrackFill && item.kind === 'group'
+              ? collapsedGroupNameDemand(item, config)
+              : itemSizes[itemIndex]?.height ?? 1,
+            explicitWeight: collapsedTrackFill ? undefined : layerWeightOf(item),
             fixedSize: collapsedTrackFill ? undefined : fixedLayerHeight(item, config),
           })),
           bandHeight,
@@ -434,6 +490,7 @@ function layoutList(
             { x: trackX, y: itemY, width: trackWidth, height: itemHeight },
             parentId,
             collapsedTrackFill,
+            false,
             config,
             cache,
             result,
@@ -452,6 +509,7 @@ function layoutElement(
   slot: LayoutRect,
   parentId: string | undefined,
   collapsedTrackFill: boolean,
+  collapsedBandFill: boolean,
   config: Required<LayoutOptions>,
   cache: Map<VisibleElement, IntrinsicSize>,
   result: RootLayoutNode[],
@@ -462,7 +520,9 @@ function layoutElement(
           ...slot,
           width:
             item.group.layout.direction === 'vertical'
-              ? Math.min(slot.width, config.collapsedGroupSize)
+              ? collapsedBandFill
+                ? slot.width
+                : Math.min(slot.width, config.collapsedGroupSize)
               : slot.width,
           height:
             item.group.layout.direction === 'horizontal'
@@ -473,7 +533,15 @@ function layoutElement(
         }
       : slot;
     const labelSize = groupLabelSize(item, rect, config);
-    result.push({ kind: 'group', item, rect, labelSize, collapsedTrackFill, parentId });
+    result.push({
+      kind: 'group',
+      item,
+      rect,
+      labelSize,
+      collapsedTrackFill,
+      collapsedBandFill,
+      parentId,
+    });
     if (item.collapsed) return;
     const vertical = item.group.layout.direction === 'vertical';
     const contentBounds: LayoutRect = vertical
@@ -512,7 +580,9 @@ function layoutElement(
     rect,
     parentId,
     renderedChildCount: canRenderChildren ? children.length : 0,
-    hiddenDescendantCount: canRenderChildren ? 0 : countVisibleDescendants(item),
+    hiddenDescendantCount: canRenderChildren
+      ? 0
+      : item.hiddenDescendantCount ?? countVisibleDescendants(item),
   });
   if (canRenderChildren) {
     layoutList(item.children, childBounds, item.capability.id, config, cache, result);

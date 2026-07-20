@@ -28,7 +28,8 @@ import {
 import { DetailPanel } from './components/DetailPanel';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { FilterMenu } from './components/FilterMenu';
-import { ExportMenu, type ExportFormat } from './components/ExportMenu';
+import { ExportMenu } from './components/ExportMenu';
+import { exportActionLabel, type ExportAction } from './export/actions';
 import { downloadBlob, svgBlob } from './export/download';
 import { createSvgExport } from './export/exportSvg';
 
@@ -76,7 +77,8 @@ export default function App() {
   const [filters, setFilters] = useState<FilterSelection>({});
   const [tabletView, setTabletView] = useState<'editor' | 'map'>('map');
   const [exportStatus, setExportStatus] = useState<{
-    format?: ExportFormat;
+    action?: ExportAction;
+    progress?: { current: number; total: number };
     state: 'idle' | 'exporting' | 'done' | 'error';
   }>({ state: 'idle' });
   const diagnostics = result.diagnostics;
@@ -149,16 +151,17 @@ export default function App() {
     return entry ? [entry] : [];
   }) ?? [];
 
-  const exportMap = useCallback(async (format: ExportFormat) => {
+  const exportMap = useCallback(async (action: ExportAction) => {
+    const label = exportActionLabel(action);
     if (
       isStale &&
       !window.confirm(
-        `Die YAML-Datei ist nicht gültig. Die letzte gültige Vorschau als ${format.toUpperCase()} exportieren?`,
+        `Die YAML-Datei ist nicht gültig. Die letzte gültige Vorschau als ${label} exportieren?`,
       )
     ) {
       return;
     }
-    setExportStatus({ state: 'exporting', format });
+    setExportStatus({ state: 'exporting', action });
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
     try {
       const options = {
@@ -172,26 +175,40 @@ export default function App() {
           ? lastValidMap.hierarchyById.get(effectiveFocusTargetId)?.pathNames
           : undefined,
       };
-      if (format === 'svg') {
+      if (action === 'svg') {
         const { filename, svg } = createSvgExport(options);
         downloadBlob(filename, svgBlob(svg));
-      } else if (format === 'png') {
+      } else if (action === 'png') {
         const { createPngExport } = await import('./export/png');
         const { blob, filename } = await createPngExport(options);
         downloadBlob(filename, blob);
-      } else if (format === 'pdf') {
+      } else if (action === 'pdf') {
         const { createPdfExport } = await import('./export/pdf');
         const { blob, filename } = await createPdfExport(options);
         downloadBlob(filename, blob);
       } else {
         const { createPptxExport } = await import('./export/pptx');
-        const { blob, filename } = await createPptxExport(options);
+        const { blob, filename } = await createPptxExport(
+          action === 'pptx-full'
+            ? {
+                mode: 'full',
+                map: lastValidMap,
+                onProgress: (current, total) => {
+                  setExportStatus({
+                    state: 'exporting',
+                    action,
+                    progress: { current, total },
+                  });
+                },
+              }
+            : { mode: 'current', options },
+        );
         downloadBlob(filename, blob);
       }
-      setExportStatus({ state: 'done', format });
+      setExportStatus({ state: 'done', action });
     } catch (error) {
-      console.error(`${format.toUpperCase()}-Export fehlgeschlagen`, error);
-      setExportStatus({ state: 'error', format });
+      console.error(`${label}-Export fehlgeschlagen`, error);
+      setExportStatus({ state: 'error', action });
     }
   }, [
     filterOptions,
@@ -312,9 +329,10 @@ export default function App() {
           </label>
           <FilterMenu options={filterOptions} selection={filters} onChange={setFilters} />
           <ExportMenu
-            disabled={visibleTree.length === 0}
-            busyFormat={exportStatus.state === 'exporting' ? exportStatus.format : undefined}
-            onExport={(format) => void exportMap(format)}
+            disabled={lastValidMap.rootItems.length === 0}
+            currentDisabled={visibleTree.length === 0}
+            busyAction={exportStatus.state === 'exporting' ? exportStatus.action : undefined}
+            onExport={(action) => void exportMap(action)}
           />
           <button type="button" className="toolbar-button" onClick={reset}>
             <RotateCcw size={16} /> Beispiel
@@ -361,12 +379,17 @@ export default function App() {
             <div className="map-meta">
               <span>{lastValidMap.capabilitiesById.size} Capabilities</span>
               {isStale && <span className="stale-badge">Nicht aktuell</span>}
-              {exportStatus.state === 'done' && exportStatus.format && (
-                <span className="export-feedback">{exportStatus.format.toUpperCase()} erstellt</span>
+              {exportStatus.state === 'exporting' && exportStatus.progress && (
+                <span className="export-feedback">
+                  PPTX {exportStatus.progress.current}/{exportStatus.progress.total}
+                </span>
               )}
-              {exportStatus.state === 'error' && exportStatus.format && (
+              {exportStatus.state === 'done' && exportStatus.action && (
+                <span className="export-feedback">{exportActionLabel(exportStatus.action)} erstellt</span>
+              )}
+              {exportStatus.state === 'error' && exportStatus.action && (
                 <span className="export-feedback error" role="alert">
-                  {exportStatus.format.toUpperCase()}-Export fehlgeschlagen
+                  {exportActionLabel(exportStatus.action)}-Export fehlgeschlagen
                 </span>
               )}
             </div>

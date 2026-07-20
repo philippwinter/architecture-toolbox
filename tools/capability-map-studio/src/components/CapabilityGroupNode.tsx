@@ -9,6 +9,7 @@ export interface CapabilityGroupNodeData extends Record<string, unknown> {
   autoCollapsed: boolean;
   labelSize: number;
   collapsedTrackFill: boolean;
+  collapsedBandFill: boolean;
   onToggle: (id: string) => void;
   onFocus: (id: string) => void;
 }
@@ -49,6 +50,7 @@ export const CapabilityGroupNode = memo(function CapabilityGroupNode({
         collapsed ? ' collapsed' : ''
       }${autoCollapsed ? ' auto-collapsed' : ''}${
         data.collapsedTrackFill ? ' collapsed-track-fill' : ''
+      }${data.collapsedBandFill ? ' collapsed-band-fill' : ''
       }`}
       style={
         {

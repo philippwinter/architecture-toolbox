@@ -51,11 +51,12 @@ function group(
   collapsed = false,
   trackWeight?: number,
   groupLevel: 1 | 2 = 1,
+  name = id,
 ): VisibleCapabilityGroup {
   const normalized: NormalizedCapabilityGroup = {
     kind: 'group',
     id,
-    name: id,
+    name,
     backgroundColor: '#eeeeee',
     layout: { direction, trackWeight },
     capabilities: capabilities.map((entry) => {
@@ -312,6 +313,66 @@ describe('capability layout', () => {
       collapsedTrackFill: true,
       rect: { x: 0, y: 150, width: 20, height: 150 },
     });
+  });
+
+  it('lets an all-collapsed vertical group band tile the full width without consuming the full height', () => {
+    const roots = [
+      group('short', 'vertical', [item('hidden-one', 'vertical')], true),
+      group(
+        'long',
+        'vertical',
+        [item('hidden-two', 'vertical')],
+        true,
+        99,
+        1,
+        'A considerably longer collapsed group name',
+      ),
+    ];
+    const layout = layoutRootItems(roots, {
+      width: 300,
+      height: 200,
+      gap: 10,
+      collapsedGroupSize: 20,
+    });
+    const first = layout.find(
+      (node) => node.kind === 'group' && node.item.group.id === 'short',
+    );
+    const second = layout.find(
+      (node) => node.kind === 'group' && node.item.group.id === 'long',
+    );
+
+    expect(first?.kind === 'group' && first.collapsedBandFill).toBe(true);
+    expect(second?.kind === 'group' && second.collapsedBandFill).toBe(true);
+    expect((first?.rect.width ?? 0) + (second?.rect.width ?? 0) + 10).toBeCloseTo(300);
+    expect(second?.rect.width ?? 0).toBeGreaterThan(first?.rect.width ?? 0);
+    expect(first?.rect.height).toBe(34);
+    expect(second?.rect.height).toBe(34);
+  });
+
+  it('reserves the remaining height for opened content next to a collapsed group band', () => {
+    const roots: VisibleRootItem[] = [
+      group('opened', 'vertical', [item('visible', 'vertical')]),
+      { kind: 'flush', direction: 'vertical' },
+      group('collapsed-one', 'vertical', [item('hidden-one', 'vertical')], true),
+      group('collapsed-two', 'vertical', [item('hidden-two', 'vertical')], true),
+    ];
+    const layout = layoutRootItems(roots, {
+      width: 300,
+      height: 300,
+      gap: 10,
+      collapsedGroupSize: 20,
+    });
+    const opened = layout.find(
+      (node) => node.kind === 'group' && node.item.group.id === 'opened',
+    );
+    const collapsed = layout.filter(
+      (node) => node.kind === 'group' && node.item.collapsed,
+    );
+
+    expect(opened?.rect.height).toBeCloseTo(270);
+    expect(collapsed).toHaveLength(2);
+    expect(collapsed.every((node) => node.rect.height === 20)).toBe(true);
+    expect(collapsed.reduce((sum, node) => sum + node.rect.width, 0) + 10).toBeCloseTo(300);
   });
 
   it('lays out all 500 reference capabilities within a bounded canvas', () => {

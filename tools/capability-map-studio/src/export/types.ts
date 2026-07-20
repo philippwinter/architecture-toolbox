@@ -22,6 +22,7 @@ export interface ExportCapabilityElement {
   renderedShape: CapabilityShapeId;
   geometry: CapabilityShapeGeometry;
   direction: LayoutDirection;
+  depth: number;
   iconNode: IconNode;
   compact: boolean;
   minimal: boolean;
@@ -38,9 +39,11 @@ export interface ExportGroupElement {
   cornerRadius: number;
   backgroundColor: string;
   direction: LayoutDirection;
+  groupLevel: 1 | 2;
   collapsed: boolean;
   autoCollapsed: boolean;
   collapsedTrackFill: boolean;
+  collapsedBandFill: boolean;
   labelSize: number;
 }
 

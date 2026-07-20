@@ -135,6 +135,14 @@ export function computeVisibleTree(
     item.children.some(
       (child) => child.kind === 'capability' && containsSearchMatch(child),
     );
+  const countVisibleDescendants = (item: VisibleCapability): number =>
+    item.children.reduce(
+      (count, child) =>
+        child.kind === 'capability'
+          ? count + 1 + countVisibleDescendants(child)
+          : count,
+      0,
+    );
 
   const visitCapability = (capability: NormalizedCapability): VisibleCapability | undefined => {
     const directFilterMatch = !filterActive || matchesFilters(capability, filters);
@@ -160,6 +168,10 @@ export function computeVisibleTree(
       (normalizedSearch.length > 0 && visibleDescendants.some(containsSearchMatch));
     const collapsed = collapsedIds.has(capability.id) && !forceOpen;
     const children = collapsed ? [] : descendantResults;
+    const visibleDescendantCount = visibleDescendants.reduce(
+      (count, descendant) => count + 1 + countVisibleDescendants(descendant),
+      0,
+    );
 
     return {
       kind: 'capability',
@@ -168,6 +180,7 @@ export function computeVisibleTree(
       contextOnly: filterActive && !directFilterMatch,
       searchMatch: directSearchMatch,
       collapsed,
+      hiddenDescendantCount: collapsed ? visibleDescendantCount : 0,
     };
   };
 

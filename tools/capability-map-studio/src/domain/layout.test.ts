@@ -156,6 +156,103 @@ describe('capability layout', () => {
     expect(byId.get(long.capability.id)?.width).toBeGreaterThan(byId.get('short')?.width ?? 0);
   });
 
+  it('reserves compact context demand and gives the flexible remainder to the focus', () => {
+    const context = item('context', 'vertical');
+    context.presentationRole = 'context';
+    const focus = item('focus', 'vertical');
+    focus.presentationRole = 'focus';
+    const layout = layoutCapabilityTree([context, focus], {
+      width: 300,
+      height: 200,
+      gap: 0,
+      demandHints: new Map([
+        ['context', { minWidth: 70, minHeight: 26, growWeight: 0 }],
+        ['focus', { minWidth: 100, minHeight: 40, growWeight: 6 }],
+      ]),
+    });
+    const byId = new Map(layout.map((node) => [node.item.capability.id, node.rect]));
+
+    expect(byId.get('context')?.width).toBeCloseTo(70);
+    expect(byId.get('focus')?.width).toBeCloseTo(230);
+    expect((byId.get('focus')?.x ?? 0) + (byId.get('focus')?.width ?? 0)).toBeCloseTo(300);
+  });
+
+  it('distributes the complete track width across context-only capability siblings', () => {
+    const first = item('first-context', 'vertical');
+    first.presentationRole = 'context';
+    const second = item('second-context', 'vertical');
+    second.presentationRole = 'context';
+    const layout = layoutCapabilityTree([first, second], {
+      width: 420,
+      height: 180,
+      gap: 12,
+      demandHints: new Map([
+        ['first-context', { minWidth: 70, minHeight: 26, growWeight: 0 }],
+        ['second-context', { minWidth: 110, minHeight: 26, growWeight: 0 }],
+      ]),
+    });
+    const byId = new Map(layout.map((node) => [node.item.capability.id, node.rect]));
+
+    expect((byId.get('first-context')?.width ?? 0) +
+      (byId.get('second-context')?.width ?? 0) + 12).toBeCloseTo(420);
+    expect(byId.get('second-context')?.width ?? 0).toBeGreaterThan(
+      byId.get('first-context')?.width ?? 0,
+    );
+  });
+
+  it('distributes the complete track height across context-only capability siblings', () => {
+    const first = item('first-context', 'horizontal');
+    first.presentationRole = 'context';
+    const second = item('second-context', 'horizontal');
+    second.presentationRole = 'context';
+    const layout = layoutCapabilityTree([first, second], {
+      width: 240,
+      height: 360,
+      gap: 12,
+      demandHints: new Map([
+        ['first-context', { minWidth: 70, minHeight: 40, growWeight: 0 }],
+        ['second-context', { minWidth: 70, minHeight: 80, growWeight: 0 }],
+      ]),
+    });
+    const byId = new Map(layout.map((node) => [node.item.capability.id, node.rect]));
+
+    expect((byId.get('first-context')?.height ?? 0) +
+      (byId.get('second-context')?.height ?? 0) + 12).toBeCloseTo(360);
+    expect(byId.get('second-context')?.height ?? 0).toBeGreaterThan(
+      byId.get('first-context')?.height ?? 0,
+    );
+  });
+
+  it('switches only a horizontal group label to a top header when vertical text cannot fit', () => {
+    const horizontal = group(
+      'horizontal-group',
+      'horizontal',
+      [item('member', 'vertical')],
+      false,
+      undefined,
+      1,
+      'A long horizontal group label',
+    );
+    const [layout] = layoutRootItems([horizontal], {
+      width: 400,
+      height: 120,
+      gap: 0,
+      padding: 8,
+      demandHints: new Map([
+        ['horizontal-group', {
+          groupLabelSize: 44,
+          groupLabelTextWidth: 260,
+          growWeight: 5,
+        }],
+        ['member', { minWidth: 80, minHeight: 30, growWeight: 1 }],
+      ]),
+    });
+
+    expect(layout?.kind).toBe('group');
+    expect(layout?.kind === 'group' && layout.labelOrientation).toBe('horizontal');
+    expect(layout?.kind === 'group' && layout.labelSize).toBe(44);
+  });
+
   it('separates consecutive rendered chevrons by four units without overlap', () => {
     const first = item('first-chevron', 'vertical');
     const second = item('second-chevron', 'vertical');
@@ -347,6 +444,50 @@ describe('capability layout', () => {
     expect(second?.rect.width ?? 0).toBeGreaterThan(first?.rect.width ?? 0);
     expect(first?.rect.height).toBe(34);
     expect(second?.rect.height).toBe(34);
+  });
+
+  it('fills surplus width across short collapsed groups and derives label rotation from geometry', () => {
+    const roots = [
+      group('first', 'vertical', [item('hidden-one', 'vertical')], true),
+      group('second', 'vertical', [item('hidden-two', 'vertical')], true),
+    ];
+    const layout = layoutRootItems(roots, {
+      width: 640,
+      height: 200,
+      gap: 12,
+      collapsedGroupSize: 20,
+    });
+    const groups = layout.filter((node) => node.kind === 'group');
+
+    expect(groups.reduce((sum, node) => sum + node.rect.width, 0) + 12).toBeCloseTo(640);
+    expect(groups.every((node) => node.labelOrientation === 'horizontal')).toBe(true);
+  });
+
+  it('rotates a tall collapsed group label even when its YAML direction is vertical', () => {
+    const roots = [
+      item('opened', 'vertical'),
+      group(
+        'collapsed-context',
+        'vertical',
+        [item('hidden', 'vertical')],
+        true,
+        undefined,
+        1,
+        'Collapsed context',
+      ),
+    ];
+    const layout = layoutRootItems(roots, {
+      width: 400,
+      height: 300,
+      gap: 12,
+      collapsedGroupSize: 20,
+    });
+    const collapsed = layout.find(
+      (node) => node.kind === 'group' && node.item.group.id === 'collapsed-context',
+    );
+
+    expect(collapsed?.kind === 'group' && collapsed.rect.height).toBe(300);
+    expect(collapsed?.kind === 'group' && collapsed.labelOrientation).toBe('vertical');
   });
 
   it('reserves the remaining height for opened content next to a collapsed group band', () => {

@@ -30,14 +30,19 @@ describe('buildFullPptxSlides', () => {
       'strategy-governance-group-enterprise-direction-group-purpose-and-vision-level-2',
     ]);
     expect(slides.slice(0, 4).map((slide) => slide.title)).toEqual([
-      'Enterprise Capability Map - Übersicht',
-      'Enterprise Capability Map - Ebene 1',
-      'Enterprise Capability Map - Ebene 1 - Strategy & Governance',
-      'Enterprise Capability Map - Ebene 1 - Market & Customer',
+      'Enterprise Capability Map – Übersicht',
+      'Enterprise Capability Map – Ebene 1',
+      'Enterprise Capability Map – Ebene 1 – Strategy & Governance',
+      'Enterprise Capability Map – Ebene 1 – Market & Customer',
     ]);
     expect(slides[7]?.title).toBe(
-      'Enterprise Capability Map - Ebene 2 - Strategy & Governance - Enterprise Direction',
+      'Enterprise Capability Map – Ebene 2 – Strategy & Governance › Enterprise Direction · Fokus: Strategy',
     );
+    expect(slides[7]).toMatchObject({
+      primaryTitle: 'Enterprise Capability Map – Ebene 2',
+      contextTitle: 'Strategy & Governance › Enterprise Direction · Fokus: Strategy',
+      metadataParts: [],
+    });
     expect(slides[7]?.series).toBe('subgroup');
     expect(slides.at(-1)?.id).toBe(
       'enablers-risk-group-procurement-and-facilities-execution-system-level-4',
@@ -96,9 +101,13 @@ describe('buildFullPptxSlides', () => {
     );
     expect(focused?.kind === 'capability' && focused.collapsed).toBe(false);
     expect(focused?.kind === 'capability' && focused.children.length).toBeGreaterThan(0);
+    expect(focused?.kind === 'capability' && focused.presentationRole).toBe('focus');
+    expect(focused?.kind === 'capability' && focused.children.every((child) =>
+      child.kind === 'flush' || child.presentationRole === 'focus-child')).toBe(true);
     expect(capabilities.filter(
       (item) => item.kind === 'capability' && item.capability.id !== 'strategy',
-    ).every((item) => item.kind === 'capability' && item.collapsed)).toBe(true);
+    ).every((item) => item.kind === 'capability' && item.collapsed &&
+      item.presentationRole === 'context')).toBe(true);
   });
 
   it('adds an ungrouped detail series only when ungrouped roots have descendants', () => {

@@ -166,6 +166,13 @@ export interface VisibleFlush {
   direction: LayoutDirection;
 }
 
+export type PresentationRole =
+  | 'normal'
+  | 'focus'
+  | 'focus-ancestor'
+  | 'focus-child'
+  | 'context';
+
 export interface VisibleCapability {
   kind: 'capability';
   capability: NormalizedCapability;
@@ -174,6 +181,7 @@ export interface VisibleCapability {
   searchMatch: boolean;
   collapsed: boolean;
   hiddenDescendantCount?: number;
+  presentationRole?: PresentationRole;
 }
 
 export type VisibleCapabilityChild = VisibleCapability | VisibleFlush;
@@ -184,6 +192,7 @@ export interface VisibleCapabilityGroup {
   capabilities: VisibleGroupItem[];
   collapsed: boolean;
   autoCollapsed: boolean;
+  presentationRole?: PresentationRole;
 }
 
 export type VisibleGroupItem = VisibleCapability | VisibleCapabilityGroup | VisibleFlush;

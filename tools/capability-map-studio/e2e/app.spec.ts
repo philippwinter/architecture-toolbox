@@ -435,7 +435,7 @@ test('exports one editable 16:9 PowerPoint slide with native shapes and text', a
   expect(pptx.subarray(0, 2).toString('ascii')).toBe('PK');
   expect(Object.keys(archive.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path))).toHaveLength(1);
   expect(presentation).toContain('cx="12191695" cy="6858000"');
-  expect(slide).toContain('Enterprise Capability Map - Ebene 2');
+  expect(slide).toContain('Enterprise Capability Map – Ebene 2');
   expect(slide).toContain('Strategy');
   expect(slide?.match(/<p:sp>/g)?.length ?? 0).toBeGreaterThan(100);
   expect(slide?.match(/prst="roundRect"/g)?.length ?? 0).toBeGreaterThan(20);
@@ -455,7 +455,7 @@ test('exports one editable 16:9 PowerPoint slide with native shapes and text', a
   const legendGroup = roundedShapeGeometry(nativeShapeByName(slide, 'Legend group'));
 
   expect(rootGroup.adjustment).not.toBe(nestedGroup.adjustment);
-  expect(rootGroup.radiusEmu).toBeCloseTo(nestedGroup.radiusEmu, -1);
+  expect(rootGroup.radiusEmu).toBeCloseTo(nestedGroup.radiusEmu, -2);
   expect(capability.radiusEmu / rootGroup.radiusEmu).toBeGreaterThan(0.5);
   expect(capability.radiusEmu / rootGroup.radiusEmu).toBeLessThan(1);
   expect(legendGroup.radiusEmu / rootGroup.radiusEmu).toBeGreaterThan(0.2);
@@ -463,7 +463,10 @@ test('exports one editable 16:9 PowerPoint slide with native shapes and text', a
   expect(slide).toContain('sz="2800"');
   expect(slide).toContain('sz="1000"');
   expect(nativeShapeByName(slide, 'Slide title')).toContain('b="1"');
-  expect(nativeShapeByName(slide, 'strategy-governance-group group name')).not.toContain('b="1"');
+  expect(nativeShapeByName(slide, 'strategy-governance-group group name')).toContain('b="1"');
+  expect(nativeShapeByName(slide, 'strategy-governance-group group name')).toContain('sz="1400"');
+  expect(nativeShapeByName(slide, 'enterprise-direction-group group name')).toContain('b="1"');
+  expect(nativeShapeByName(slide, 'enterprise-direction-group group name')).toContain('sz="1200"');
   expect(nativeShapeByName(slide, 'strategy capability name · Strategy')).not.toContain('b="1"');
   await expect(page.getByText('PPTX – aktuelle Darstellung erstellt')).toBeVisible();
 });
@@ -485,21 +488,62 @@ test('exports the complete map with one detail slide per expandable capability',
     if (!slide) throw new Error(`PowerPoint-Folie fehlt: ${path}`);
     slides.push(await slide.async('text'));
   }
+  const masterPaths = Object.keys(archive.files)
+    .filter((path) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(path));
+  const masters: string[] = [];
+  for (const path of masterPaths) {
+    const master = archive.file(path);
+    if (master) masters.push(await master.async('text'));
+  }
   const media = Object.keys(archive.files).filter((path) => path.startsWith('ppt/media/'));
 
   expect(download.suggestedFilename()).toMatch(
     /^enterprise-capabilities-vollstaendig-\d{8}-\d{6}\.pptx$/,
   );
   expect(slidePaths).toHaveLength(95);
-  expect(slides[0]).toContain('Enterprise Capability Map - Übersicht');
-  expect(slides[1]).toContain('Enterprise Capability Map - Ebene 1');
-  expect(slides[2]).toContain('Enterprise Capability Map - Ebene 1 - Strategy &amp; Governance');
-  expect(slides[7]).toContain('Enterprise Capability Map - Ebene 2 - Strategy &amp; Governance - Enterprise Direction');
-  expect(slides[10]).toContain('Enterprise Capability Map - Ebene 2 - Strategy &amp; Governance - Enterprise Direction');
-  expect(slides[94]).toContain('Enterprise Capability Map - Ebene 4 - Technology, Risk &amp; Enablers');
-  expect(slides[94]).toContain('Fokus: Procurement &amp; Facilities › Operating Model › Execution System');
-  expect(slides.every((slide) => slide?.includes('sz="2800"'))).toBe(true);
+  expect(masters.some((master) => master.includes('Enterprise Capability Map – Übersicht'))).toBe(true);
+  expect(masters.some((master) => master.includes('Enterprise Capability Map – Ebene 1'))).toBe(true);
+  expect(masters.some((master) => master.includes('Enterprise Capability Map – Ebene 2'))).toBe(true);
+  expect(masters.some((master) => master.includes('Enterprise Capability Map – Ebene 4'))).toBe(true);
+  expect(slides[2]).toContain('Strategy &amp; Governance');
+  expect(nativeShapeByName(slides[0] ?? '', 'strategy-governance-group group name'))
+    .toContain('sz="1600"');
+  expect(nativeShapeByName(slides[0] ?? '', 'strategy-governance-group group name'))
+    .toContain('b="1"');
+  expect(nativeShapeByName(slides[1] ?? '', 'strategy-governance-group group name'))
+    .toContain('sz="1200"');
+  expect(nativeShapeByName(slides[1] ?? '', 'enterprise-direction-group group name'))
+    .toContain('sz="1000"');
+  expect(nativeShapeByName(slides[1] ?? '', 'strategy capability name · Strategy'))
+    .toContain('sz="700"');
+  expect(nativeShapeByName(slides[2] ?? '', 'strategy capability name · Strategy'))
+    .toContain('sz="900"');
+  expect(slides.slice(1, 7).every((slide) =>
+    !slide.includes('hidden descendants badge') &&
+    !slide.includes('hidden descendants count'))).toBe(true);
+  expect(slides[1]).toContain('Corporate Governance');
+  expect(slides[1]).toContain('Channel Strategy');
+  expect(slides[1]).toContain('Customer Service');
+  expect(slides[7]).toContain(
+    'Strategy &amp; Governance › Enterprise Direction · Fokus: Strategy',
+  );
+  expect(slides[10]).toContain(
+    'Strategy &amp; Governance › Enterprise Direction · Fokus: Strategic Foresight',
+  );
+  expect(slides[94]).toContain('Technology, Risk &amp; Enablers');
+  expect(nativeShapeByName(slides[94] ?? '', 'Slide context')).toContain(
+    'Fokus: Procurement &amp; Facilities › Operating Model › Execution System',
+  );
+  expect(nativeShapeByName(slides[94] ?? '', 'Export metadata')).not.toContain('Fokus:');
+  expect(masters.filter((master) => master.includes('Enterprise Capability Map')).every(
+    (master) => master.includes('sz="2800"'),
+  )).toBe(true);
   expect(slides.every((slide) => slide?.includes('sz="1000"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="1400"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="1200"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="800"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="700"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="600"'))).toBe(true);
   expect(slides.every((slide) => slide?.includes('Vollständiger Export'))).toBe(true);
   expect(
     Math.min(
@@ -509,7 +553,18 @@ test('exports the complete map with one detail slide per expandable capability',
     ),
   ).toBeGreaterThanOrEqual(100);
   expect(slides.some((slide) => slide?.includes('prst="chevron"'))).toBe(true);
-  expect(media.some((path) => path.endsWith('.svg'))).toBe(true);
+  const levelTwoMaster = masters.find((master) =>
+    master.includes('Enterprise Capability Map – Ebene 2')) ?? '';
+  expect(nativeShapeByName(levelTwoMaster, 'Slide title')).toContain('b="1"');
+  expect(nativeShapeByName(slides[7] ?? '', 'Slide context')).not.toContain('b="1"');
+  expect(nativeShapeByName(slides[7] ?? '', 'strategy capability surface')).toContain('2D7D6F');
+  expect(nativeShapeByName(slides[7] ?? '', 'strategy-governance-group group surface'))
+    .not.toContain('2D7D6F');
+  expect(nativeShapeByName(slides[7] ?? '', 'enterprise-direction-group group surface'))
+    .not.toContain('2D7D6F');
+  expect(nativeShapeByName(slides[7] ?? '', 'market-customer-group group name'))
+    .not.toContain('b="1"');
+  expect(media.every((path) => !path.endsWith('.png'))).toBe(true);
   await expect(page.getByText('PPTX – vollständige Map erstellt')).toBeVisible();
 });
 

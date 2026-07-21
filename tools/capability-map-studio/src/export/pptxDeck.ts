@@ -9,6 +9,7 @@ import type {
   VisibleCapabilityGroup,
   VisibleGroupItem,
   VisibleRootItem,
+  PresentationRole,
 } from '../domain/types';
 import type { ViewProfile } from '../domain/viewState';
 import type { BuildExportSceneOptions } from './scene';
@@ -52,6 +53,8 @@ export interface PptxSlideDefinition {
   kind: PptxSlideKind;
   series: PptxSlideSeries;
   title: string;
+  primaryTitle: string;
+  contextTitle?: string;
   roots: VisibleRootItem[];
   level?: number;
   focus?: PptxSlideFocus;
@@ -84,6 +87,7 @@ function capabilityChildren(capability: NormalizedCapability): NormalizedCapabil
 function visibleCapability(
   capability: NormalizedCapability,
   maximumVisibleLevel: number,
+  presentationRole: PresentationRole = 'normal',
 ): VisibleCapability {
   const children = capabilityChildren(capability);
   const canExpand = capability.depth + 1 < maximumVisibleLevel;
@@ -107,6 +111,7 @@ function visibleCapability(
     hiddenDescendantCount: children.length > 0 && !canExpand
       ? capability.descendantCount
       : 0,
+    presentationRole,
   };
 }
 
@@ -114,6 +119,7 @@ function visibleGroup(
   group: NormalizedCapabilityGroup,
   maximumVisibleLevel: number,
   collapsed = false,
+  presentationRole: PresentationRole = collapsed ? 'context' : 'normal',
 ): VisibleCapabilityGroup {
   const capabilities = collapsed
     ? []
@@ -130,6 +136,7 @@ function visibleGroup(
     capabilities,
     collapsed,
     autoCollapsed: false,
+    presentationRole,
   };
 }
 
@@ -144,6 +151,7 @@ function fullOverviewRoots(map: NormalizedMap): VisibleRootItem[] {
           capabilities: [],
           collapsed: false,
           autoCollapsed: false,
+          presentationRole: 'normal',
         };
       }
       return visibleCapability(item, 1);
@@ -170,21 +178,26 @@ function groupedDetailRoots(
     map.rootItems.flatMap<VisibleRootItem>((item) => {
       if (item.kind === 'flush') return [{ kind: 'flush', direction: item.direction }];
       if (item.kind !== 'group') return [];
-      return [visibleGroup(item, level, item.id !== topGroupId)];
+      const collapsed = item.id !== topGroupId;
+      return [visibleGroup(item, level, collapsed, collapsed ? 'context' : 'focus')];
     }),
   );
 }
 
-function collapsedCapability(capability: NormalizedCapability): VisibleCapability {
+function collapsedCapability(
+  capability: NormalizedCapability,
+  presentationRole: PresentationRole = 'context',
+): VisibleCapability {
   const children = capabilityChildren(capability);
   return {
     kind: 'capability',
     capability,
     children: [],
-    contextOnly: false,
+    contextOnly: presentationRole === 'context',
     searchMatch: false,
     collapsed: children.length > 0,
     hiddenDescendantCount: children.length > 0 ? capability.descendantCount : 0,
+    presentationRole,
   };
 }
 
@@ -192,13 +205,13 @@ function focusedCapability(
   capability: NormalizedCapability,
   focus: NormalizedCapability,
 ): VisibleCapability {
-  if (!focus.path.includes(capability.id)) return collapsedCapability(capability);
+  if (!focus.path.includes(capability.id)) return collapsedCapability(capability, 'context');
 
   const children = cleanFlushes(
     capability.children.map<VisibleCapabilityChild>((child) => {
       if (child.kind === 'flush') return { kind: 'flush', direction: child.direction };
       return capability.id === focus.id
-        ? collapsedCapability(child)
+        ? collapsedCapability(child, 'focus-child')
         : focusedCapability(child, focus);
     }),
   );
@@ -210,6 +223,7 @@ function focusedCapability(
     searchMatch: false,
     collapsed: false,
     hiddenDescendantCount: 0,
+    presentationRole: capability.id === focus.id ? 'focus' : 'focus-ancestor',
   };
 }
 
@@ -265,14 +279,14 @@ function capabilityDetailRoots(
         if (topGroup) return [];
         return [focus.path.includes(item.id)
           ? focusedCapability(item, focus)
-          : collapsedCapability(item)];
+          : collapsedCapability(item, 'context')];
       }
-      if (!topGroup || item.id !== topGroup.id) return [visibleGroup(item, 1, true)];
+      if (!topGroup || item.id !== topGroup.id) return [visibleGroup(item, 1, true, 'context')];
 
       const capabilities = cleanFlushes(item.capabilities.flatMap<VisibleGroupItem>((child) => {
         if (child.kind === 'flush') return [{ kind: 'flush', direction: child.direction }];
         if (child.kind === 'group') {
-          if (!subgroup || child.id !== subgroup.id) return [visibleGroup(child, 1, true)];
+          if (!subgroup || child.id !== subgroup.id) return [visibleGroup(child, 1, true, 'context')];
           return [{
             kind: 'group',
             group: child,
@@ -280,19 +294,20 @@ function capabilityDetailRoots(
               if (subItem.kind === 'flush') {
                 return { kind: 'flush', direction: subItem.direction };
               }
-              if (subItem.kind === 'group') return visibleGroup(subItem, 1, true);
+              if (subItem.kind === 'group') return visibleGroup(subItem, 1, true, 'context');
               return focus.path.includes(subItem.id)
                 ? focusedCapability(subItem, focus)
-                : collapsedCapability(subItem);
+                : collapsedCapability(subItem, 'context');
             })),
             collapsed: false,
             autoCollapsed: false,
+            presentationRole: 'focus-ancestor',
           }];
         }
         if (subgroup) return [];
         return [focus.path.includes(child.id)
           ? focusedCapability(child, focus)
-          : collapsedCapability(child)];
+          : collapsedCapability(child, 'context')];
       }));
       return [{
         kind: 'group',
@@ -300,17 +315,20 @@ function capabilityDetailRoots(
         capabilities,
         collapsed: false,
         autoCollapsed: false,
+        presentationRole: 'focus-ancestor',
       }];
     }),
   );
 }
 
 export function buildCurrentPptxSlides(options: BuildExportSceneOptions): PptxSlideDefinition[] {
+  const primaryTitle = `${options.map.name} – ${PROFILE_LABELS[options.profile]}`;
   return [{
     id: 'current',
     kind: 'current',
     series: 'current',
-    title: `${options.map.name} - ${PROFILE_LABELS[options.profile]}`,
+    title: primaryTitle,
+    primaryTitle,
     roots: options.roots,
     overviewGroupIds: [],
     metadataParts: [`Ansicht: ${PROFILE_LABELS[options.profile]}`],
@@ -327,7 +345,8 @@ export function buildFullPptxSlides(map: NormalizedMap): PptxSlideDefinition[] {
       id: 'overview',
       kind: 'overview',
       series: 'overview',
-      title: `${map.name} - Übersicht`,
+      title: `${map.name} – Übersicht`,
+      primaryTitle: `${map.name} – Übersicht`,
       roots: fullOverviewRoots(map),
       overviewGroupIds,
       metadataParts: [],
@@ -336,7 +355,8 @@ export function buildFullPptxSlides(map: NormalizedMap): PptxSlideDefinition[] {
       id: 'level-1',
       kind: 'level',
       series: 'level-one',
-      title: `${map.name} - Ebene 1`,
+      title: `${map.name} – Ebene 1`,
+      primaryTitle: `${map.name} – Ebene 1`,
       roots: fullLevelOneRoots(map),
       level: 1,
       overviewGroupIds: [],
@@ -345,11 +365,14 @@ export function buildFullPptxSlides(map: NormalizedMap): PptxSlideDefinition[] {
   ];
 
   topGroups.forEach((group) => {
+    const primaryTitle = `${map.name} – Ebene 1`;
     slides.push({
       id: `${group.id}-level-1`,
       kind: 'level',
       series: 'top-group',
-      title: `${map.name} - Ebene 1 - ${group.name}`,
+      title: `${primaryTitle} – ${group.name}`,
+      primaryTitle,
+      contextTitle: group.name,
       roots: groupedDetailRoots(map, group.id, 1),
       level: 1,
       focus: { kind: 'top-group', topGroupId: group.id },
@@ -361,19 +384,20 @@ export function buildFullPptxSlides(map: NormalizedMap): PptxSlideDefinition[] {
   capabilitySlideContexts(map).forEach((context) => {
     const { capability, topGroup, subgroup } = context;
     const level = capability.depth + 2;
-    const titleParts = [
-      map.name,
-      `Ebene ${level}`,
-      topGroup?.name ?? 'Weitere Capabilities',
-      subgroup?.name,
-    ].filter((part): part is string => Boolean(part));
+    const primaryTitle = `${map.name} – Ebene ${level}`;
+    const groupContext = [topGroup?.name ?? 'Weitere Capabilities', subgroup?.name]
+      .filter((part): part is string => Boolean(part))
+      .join(' › ');
+    const contextTitle = `${groupContext} · Fokus: ${capability.pathNames.join(' › ')}`;
     slides.push({
       id: [topGroup?.id, subgroup?.id, capability.id, `level-${level}`]
         .filter(Boolean)
         .join('-'),
       kind: 'level',
       series: subgroup ? 'subgroup' : topGroup ? 'top-group' : 'ungrouped',
-      title: titleParts.join(' - '),
+      title: `${primaryTitle} – ${contextTitle}`,
+      primaryTitle,
+      contextTitle,
       roots: capabilityDetailRoots(map, context),
       level,
       focus: {
@@ -383,7 +407,7 @@ export function buildFullPptxSlides(map: NormalizedMap): PptxSlideDefinition[] {
         ...(subgroup ? { subgroupId: subgroup.id } : {}),
       },
       overviewGroupIds: [],
-      metadataParts: [`Fokus: ${capability.pathNames.join(' › ')}`],
+      metadataParts: [],
     });
   });
 

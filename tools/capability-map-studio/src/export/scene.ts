@@ -138,6 +138,7 @@ export function buildExportScene({
             id: node.item.group.id,
             name: node.item.group.name,
             rect,
+            parentId: node.parentId,
             cornerRadius: EXPORT_CORNER_RADII.group,
             backgroundColor: node.item.group.backgroundColor,
             direction: node.item.group.layout.direction,
@@ -147,6 +148,8 @@ export function buildExportScene({
             collapsedTrackFill: node.collapsedTrackFill,
             collapsedBandFill: node.collapsedBandFill,
             labelSize: node.labelSize,
+            labelOrientation: node.labelOrientation,
+            presentationRole: node.item.presentationRole ?? 'normal',
           }
         : (() => {
             const presentation = getCapabilityPresentation(
@@ -164,6 +167,7 @@ export function buildExportScene({
               id: node.item.capability.id,
               name: node.item.capability.name,
               rect,
+              parentId: node.parentId,
               cornerRadius: geometry.cornerRadius,
               color: node.item.capability.color,
               textColor: readableTextColor(node.item.capability.color),
@@ -178,6 +182,7 @@ export function buildExportScene({
               nameLineCount: presentation.nameLineCount,
               hiddenDescendantCount: node.hiddenDescendantCount,
               contextOnly: node.item.contextOnly,
+              presentationRole: node.item.presentationRole ?? 'normal',
             };
           })();
     positioned.set(idOf(element), element);

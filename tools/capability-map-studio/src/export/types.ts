@@ -1,6 +1,6 @@
 import type { IconNode } from 'lucide-react';
 import type { CapabilityShapeGeometry, CapabilityShapeId } from '../domain/shapes';
-import type { CapabilityShape, LayoutDirection } from '../domain/types';
+import type { CapabilityShape, LayoutDirection, PresentationRole } from '../domain/types';
 import type { ViewProfile } from '../domain/viewState';
 
 export interface ExportRect {
@@ -15,6 +15,7 @@ export interface ExportCapabilityElement {
   id: string;
   name: string;
   rect: ExportRect;
+  parentId?: string;
   cornerRadius: number;
   color: string;
   textColor: string;
@@ -29,6 +30,7 @@ export interface ExportCapabilityElement {
   nameLineCount: number;
   hiddenDescendantCount: number;
   contextOnly: boolean;
+  presentationRole: PresentationRole;
 }
 
 export interface ExportGroupElement {
@@ -36,6 +38,7 @@ export interface ExportGroupElement {
   id: string;
   name: string;
   rect: ExportRect;
+  parentId?: string;
   cornerRadius: number;
   backgroundColor: string;
   direction: LayoutDirection;
@@ -45,6 +48,8 @@ export interface ExportGroupElement {
   collapsedTrackFill: boolean;
   collapsedBandFill: boolean;
   labelSize: number;
+  labelOrientation: 'horizontal' | 'vertical';
+  presentationRole: PresentationRole;
 }
 
 export type ExportSceneElement = ExportCapabilityElement | ExportGroupElement;

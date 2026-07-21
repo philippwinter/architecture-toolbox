@@ -1,5 +1,6 @@
 import type {
   LayoutDirection,
+  PresentationRole,
   VisibleCapability,
   VisibleCapabilityGroup,
   VisibleGroupItem,
@@ -32,6 +33,7 @@ export interface GroupLayoutNode {
   item: VisibleCapabilityGroup;
   rect: LayoutRect;
   labelSize: number;
+  labelOrientation: 'horizontal' | 'vertical';
   collapsedTrackFill: boolean;
   collapsedBandFill: boolean;
   parentId?: string;
@@ -51,6 +53,16 @@ export interface LayoutOptions {
   groupLabelWidth?: number;
   collapsedGroupSize?: number;
   leafHeight?: number;
+  demandHints?: ReadonlyMap<string, LayoutDemandHint>;
+}
+
+export interface LayoutDemandHint {
+  minWidth?: number;
+  minHeight?: number;
+  growWeight?: number;
+  groupLabelFontSizePt?: number;
+  groupLabelSize?: number;
+  groupLabelTextWidth?: number;
 }
 
 type VisibleElement = VisibleCapability | VisibleCapabilityGroup;
@@ -71,7 +83,11 @@ interface LayoutBand {
   tracks: LayoutTrack[];
 }
 
-const DEFAULTS: Required<LayoutOptions> = {
+type ResolvedLayoutOptions = Omit<Required<LayoutOptions>, 'demandHints'> & {
+  demandHints: ReadonlyMap<string, LayoutDemandHint>;
+};
+
+const DEFAULTS: ResolvedLayoutOptions = {
   width: 1600,
   height: 900,
   gap: 12,
@@ -83,6 +99,7 @@ const DEFAULTS: Required<LayoutOptions> = {
   groupLabelWidth: 118,
   collapsedGroupSize: 22,
   leafHeight: 58,
+  demandHints: new Map(),
 };
 
 const MIN_AUTO_WEIGHT = 0.5;
@@ -94,6 +111,31 @@ const GROUP_LABEL_PADDING = 20;
 
 function directionOf(item: VisibleElement): LayoutDirection {
   return item.kind === 'group' ? item.group.layout.direction : item.capability.layout.direction;
+}
+
+function idOf(item: VisibleElement): string {
+  return item.kind === 'group' ? item.group.id : item.capability.id;
+}
+
+function roleOf(item: VisibleElement): PresentationRole {
+  return item.presentationRole ?? 'normal';
+}
+
+function hintOf(item: VisibleElement, config: ResolvedLayoutOptions): LayoutDemandHint | undefined {
+  return config.demandHints.get(idOf(item));
+}
+
+function elementGrowWeight(item: VisibleElement, config: ResolvedLayoutOptions): number | undefined {
+  const configured = hintOf(item, config)?.growWeight;
+  if (configured !== undefined) return configured;
+  return roleOf(item) === 'context' ? 0 : undefined;
+}
+
+function maximumGrowWeight(items: VisibleElement[], config: ResolvedLayoutOptions): number | undefined {
+  const weights = items.map((item) => elementGrowWeight(item, config));
+  return weights.some((weight) => weight !== undefined)
+    ? Math.max(0, ...weights.map((weight) => weight ?? 1))
+    : undefined;
 }
 
 function layerWeightOf(item: VisibleElement): number | undefined {
@@ -189,7 +231,7 @@ function countVisibleDescendants(item: VisibleCapability): number {
 
 function collapsedGroupIntrinsic(
   item: VisibleCapabilityGroup,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
 ): IntrinsicSize {
   const nameWidth = Math.max(
     config.groupLabelWidth,
@@ -202,17 +244,19 @@ function collapsedGroupIntrinsic(
 
 function collapsedGroupNameDemand(
   item: VisibleCapabilityGroup,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
 ): number {
+  const measured = hintOf(item, config)?.groupLabelTextWidth;
   return Math.max(
     config.groupLabelWidth,
     GROUP_LABEL_PADDING + item.group.name.length * GROUP_LABEL_AVERAGE_CHARACTER_WIDTH,
+    measured ?? 0,
   );
 }
 
 function intrinsicElement(
   item: VisibleElement,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
   cache: Map<VisibleElement, IntrinsicSize>,
 ): IntrinsicSize {
   const cached = cache.get(item);
@@ -236,22 +280,37 @@ function intrinsicElement(
           };
     }
   } else if (fachChildren(item).length === 0) {
-    const textWidth =
-      68 +
-      item.capability.name.length * 6.2 +
-      preferredShapeHorizontalOverhead(
-        item.capability.shape,
-        item.capability.layout.direction,
-      );
-    size = {
-      width: Math.min(MAX_LEAF_WIDTH, Math.max(MIN_LEAF_WIDTH, textWidth)),
-      height: config.leafHeight,
-    };
+    const hint = hintOf(item, config);
+    if (roleOf(item) === 'context' && hint) {
+      size = {
+        width: Math.max(70, hint.minWidth ?? 70),
+        height: Math.max(26, hint.minHeight ?? 26),
+      };
+    } else {
+      const textWidth =
+        68 +
+        item.capability.name.length * 6.2 +
+        preferredShapeHorizontalOverhead(
+          item.capability.shape,
+          item.capability.layout.direction,
+        );
+      size = {
+        width: Math.min(MAX_LEAF_WIDTH, Math.max(MIN_LEAF_WIDTH, textWidth)),
+        height: config.leafHeight,
+      };
+    }
   } else {
     const content = intrinsicList(item.children, config, cache);
     size = {
       width: Math.max(MIN_LEAF_WIDTH, content.width + config.padding * 2),
       height: config.headerHeight + content.height + config.padding * 2,
+    };
+  }
+  const hint = hintOf(item, config);
+  if (hint) {
+    size = {
+      width: Math.max(size.width, hint.minWidth ?? 0),
+      height: Math.max(size.height, hint.minHeight ?? 0),
     };
   }
   cache.set(item, size);
@@ -260,7 +319,7 @@ function intrinsicElement(
 
 function intrinsicTrack(
   track: LayoutTrack,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
   cache: Map<VisibleElement, IntrinsicSize>,
 ): IntrinsicSize {
   const sizes = track.items.map((item) => intrinsicElement(item, config, cache));
@@ -273,7 +332,7 @@ function intrinsicTrack(
 
 function intrinsicBand(
   band: LayoutBand,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
   cache: Map<VisibleElement, IntrinsicSize>,
 ): IntrinsicSize {
   const sizes = band.tracks.map((track) => intrinsicTrack(track, config, cache));
@@ -286,7 +345,7 @@ function intrinsicBand(
 
 function intrinsicList(
   items: ElementList,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
   cache: Map<VisibleElement, IntrinsicSize>,
 ): IntrinsicSize {
   const bands = splitIntoBands(items);
@@ -301,6 +360,8 @@ interface AllocationEntry {
   preferred: number;
   explicitWeight?: number;
   fixedSize?: number;
+  minimumSize?: number;
+  growWeight?: number;
 }
 
 function allocateSizes(
@@ -312,6 +373,43 @@ function allocateSizes(
     ? gapOrGaps.reduce((sum, gap) => sum + gap, 0)
     : gapOrGaps * Math.max(0, entries.length - 1);
   const usableSize = Math.max(0, totalSize - totalGap);
+  const usesDemandAllocation = entries.some(
+    (entry) => entry.minimumSize !== undefined || entry.growWeight !== undefined,
+  );
+  if (usesDemandAllocation) {
+    const minima = entries.map((entry) => Math.max(
+      0,
+      entry.fixedSize ?? entry.minimumSize ?? Math.min(entry.preferred, usableSize),
+    ));
+    const minimumTotal = minima.reduce((sum, value) => sum + value, 0);
+    if (minimumTotal >= usableSize) {
+      const scale = minimumTotal > 0 ? usableSize / minimumTotal : 0;
+      return minima.map((value) => value * scale);
+    }
+    const surplus = usableSize - minimumTotal;
+    const weights = entries.map((entry) => {
+      if (entry.fixedSize !== undefined) return 0;
+      if (entry.growWeight !== undefined) return Math.max(0, entry.growWeight);
+      return entry.explicitWeight ?? 1;
+    });
+    const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+    if (weightTotal === 0) {
+      const fallbackWeights = entries.map((entry, index) =>
+        entry.fixedSize === undefined
+          ? Math.max(1, minima[index] ?? 0, entry.preferred)
+          : 0,
+      );
+      const fallbackTotal = fallbackWeights.reduce((sum, value) => sum + value, 0);
+      return minima.map((minimum, index) =>
+        minimum + (fallbackTotal > 0
+          ? surplus * (fallbackWeights[index] ?? 0) / fallbackTotal
+          : 0),
+      );
+    }
+    return minima.map((minimum, index) =>
+      minimum + surplus * (weights[index] ?? 0) / weightTotal,
+    );
+  }
   const fixedSize = entries.reduce((sum, entry) => sum + (entry.fixedSize ?? 0), 0);
   const flexibleSize = Math.max(0, usableSize - fixedSize);
   const automaticPreferred = entries
@@ -356,7 +454,7 @@ function isCollapsedVerticalGroupBand(band: LayoutBand): boolean {
 function collapsedVerticalBandHeight(
   band: LayoutBand,
   availableWidth: number,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
 ): number {
   const gaps = trackGaps(band.tracks, config.gap);
   const usableWidth = Math.max(
@@ -376,27 +474,51 @@ function collapsedVerticalBandHeight(
 function groupLabelSize(
   item: VisibleCapabilityGroup,
   rect: LayoutRect,
-  config: Required<LayoutOptions>,
-): number {
+  config: ResolvedLayoutOptions,
+): { size: number; orientation: 'horizontal' | 'vertical' } {
   if (item.collapsed) {
-    return item.group.layout.direction === 'vertical' ? rect.height : rect.width;
+    const verticalFits = rect.height > rect.width &&
+      rect.height >= collapsedGroupNameDemand(item, config);
+    return {
+      size: verticalFits ? rect.width : rect.height,
+      orientation: verticalFits ? 'vertical' : 'horizontal',
+    };
   }
-  if (item.group.layout.direction === 'horizontal') return config.groupHeaderHeight;
+  if (item.group.layout.direction === 'horizontal') {
+    const hint = hintOf(item, config);
+    if (!hint) {
+      return { size: config.groupHeaderHeight, orientation: 'vertical' };
+    }
+    const nameDemand = hint?.groupLabelTextWidth ?? collapsedGroupNameDemand(item, config);
+    const verticalFits = rect.height >= nameDemand;
+    return verticalFits
+      ? {
+          size: Math.max(config.groupHeaderHeight, hint?.groupLabelSize ?? 0),
+          orientation: 'vertical',
+        }
+      : {
+          size: Math.max(config.groupHeaderHeight, hint?.groupLabelSize ?? 0),
+          orientation: 'horizontal',
+        };
+  }
   const usableWidth = Math.max(GROUP_LABEL_AVERAGE_CHARACTER_WIDTH, rect.width - GROUP_LABEL_PADDING);
   const charactersPerLine = Math.max(1, Math.floor(usableWidth / GROUP_LABEL_AVERAGE_CHARACTER_WIDTH));
   const lines = Math.ceil(item.group.name.length / charactersPerLine);
-  return Math.max(config.groupHeaderHeight, GROUP_LABEL_PADDING + lines * 14);
+  return {
+    size: Math.max(config.groupHeaderHeight, GROUP_LABEL_PADDING + lines * 14),
+    orientation: 'horizontal',
+  };
 }
 
 function fixedTrackWidth(
   track: LayoutTrack,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
 ): number | undefined {
   if (!track.items.every((item) => item.kind === 'group' && item.collapsed)) return undefined;
   return config.collapsedGroupSize;
 }
 
-function fixedLayerHeight(item: VisibleElement, config: Required<LayoutOptions>): number | undefined {
+function fixedLayerHeight(item: VisibleElement, config: ResolvedLayoutOptions): number | undefined {
   return item.kind === 'group' && item.collapsed && directionOf(item) === 'horizontal'
     ? config.collapsedGroupSize
     : undefined;
@@ -406,7 +528,7 @@ function layoutList(
   items: ElementList,
   bounds: LayoutRect,
   parentId: string | undefined,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
   cache: Map<VisibleElement, IntrinsicSize>,
   result: RootLayoutNode[],
 ): void {
@@ -415,13 +537,23 @@ function layoutList(
   const bandSizes = bands.map((band) => intrinsicBand(band, config, cache));
   const collapsedVerticalBands = bands.map(isCollapsedVerticalGroupBand);
   const bandHeights = allocateSizes(
-    bandSizes.map((size, index) => ({
+    bandSizes.map((size, index) => {
+      const growWeight = maximumGrowWeight(
+        bands[index]?.tracks.flatMap((track) => track.items) ?? [],
+        config,
+      );
+      return {
       preferred: size.height,
       explicitWeight: collapsedVerticalBands[index] ? undefined : Math.max(1, size.height),
       fixedSize: collapsedVerticalBands[index]
         ? collapsedVerticalBandHeight(bands[index] as LayoutBand, bounds.width, config)
         : undefined,
-    })),
+      minimumSize: growWeight === undefined || collapsedVerticalBands[index]
+        ? undefined
+        : size.height,
+      growWeight,
+    };
+    }),
     bounds.height,
     config.gap,
   );
@@ -433,7 +565,9 @@ function layoutList(
     const gaps = trackGaps(band.tracks, config.gap);
     const collapsedBandFill = collapsedVerticalBands[bandIndex] ?? false;
     const trackWidths = allocateSizes(
-      band.tracks.map((track, trackIndex) => ({
+      band.tracks.map((track, trackIndex) => {
+        const growWeight = maximumGrowWeight(track.items, config);
+        return {
         preferred: collapsedBandFill
           ? collapsedGroupNameDemand(
               track.items[0] as VisibleCapabilityGroup,
@@ -444,7 +578,12 @@ function layoutList(
           ? undefined
           : trackWeightOf(track.items[0] as VisibleElement),
         fixedSize: collapsedBandFill ? undefined : fixedTrackWidth(track, config),
-      })),
+        minimumSize: growWeight === undefined || collapsedBandFill
+          ? undefined
+          : trackSizes[trackIndex]?.width,
+        growWeight,
+      };
+      }),
       bounds.width,
       gaps,
     );
@@ -472,13 +611,20 @@ function layoutList(
         );
         const itemSizes = track.items.map((item) => intrinsicElement(item, config, cache));
         const itemHeights = allocateSizes(
-          track.items.map((item, itemIndex) => ({
+          track.items.map((item, itemIndex) => {
+            const growWeight = elementGrowWeight(item, config);
+            return {
             preferred: collapsedTrackFill && item.kind === 'group'
               ? collapsedGroupNameDemand(item, config)
               : itemSizes[itemIndex]?.height ?? 1,
             explicitWeight: collapsedTrackFill ? undefined : layerWeightOf(item),
             fixedSize: collapsedTrackFill ? undefined : fixedLayerHeight(item, config),
-          })),
+            minimumSize: growWeight === undefined || collapsedTrackFill
+              ? undefined
+              : itemSizes[itemIndex]?.height,
+            growWeight,
+          };
+          }),
           bandHeight,
           config.gap,
         );
@@ -510,7 +656,7 @@ function layoutElement(
   parentId: string | undefined,
   collapsedTrackFill: boolean,
   collapsedBandFill: boolean,
-  config: Required<LayoutOptions>,
+  config: ResolvedLayoutOptions,
   cache: Map<VisibleElement, IntrinsicSize>,
   result: RootLayoutNode[],
 ): void {
@@ -532,19 +678,22 @@ function layoutElement(
               : slot.height,
         }
       : slot;
-    const labelSize = groupLabelSize(item, rect, config);
+    const label = groupLabelSize(item, rect, config);
+    const labelSize = label.size;
     result.push({
       kind: 'group',
       item,
       rect,
       labelSize,
+      labelOrientation: label.orientation,
       collapsedTrackFill,
       collapsedBandFill,
       parentId,
     });
     if (item.collapsed) return;
     const vertical = item.group.layout.direction === 'vertical';
-    const contentBounds: LayoutRect = vertical
+    const horizontalHeader = item.group.layout.direction === 'horizontal' && label.orientation === 'horizontal';
+    const contentBounds: LayoutRect = vertical || horizontalHeader
       ? {
           x: config.padding,
           y: labelSize + config.padding,
@@ -602,7 +751,7 @@ export function layoutRootItems(
   roots: VisibleRootItem[],
   options: LayoutOptions = {},
 ): RootLayoutNode[] {
-  const config = { ...DEFAULTS, ...options };
+  const config: ResolvedLayoutOptions = { ...DEFAULTS, ...options };
   const cache = new Map<VisibleElement, IntrinsicSize>();
   const intrinsic = intrinsicList(roots, config, cache);
   const bounds = {

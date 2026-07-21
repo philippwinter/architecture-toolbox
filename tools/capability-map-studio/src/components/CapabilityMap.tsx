@@ -109,6 +109,7 @@ function MapCanvas({
             autoCollapsed: item.autoCollapsed,
             labelSize: layoutNode.labelSize,
             collapsedTrackFill: layoutNode.collapsedTrackFill,
+            collapsedBandFill: layoutNode.collapsedBandFill,
             onToggle: handleToggleGroup,
             onFocus,
           },

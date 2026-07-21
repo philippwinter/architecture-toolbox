@@ -1,5 +1,5 @@
 import { getCapabilityIconNode } from '../domain/icons';
-import { layoutRootItems, type LayoutRect } from '../domain/layout';
+import { layoutRootItems, type LayoutOptions, type LayoutRect } from '../domain/layout';
 import { getCapabilityPresentation } from '../domain/presentation';
 import {
   getCapabilityShapeDefinition,
@@ -41,6 +41,7 @@ export interface BuildExportSceneOptions {
   search?: string;
   focusPath?: string[];
   createdAt?: Date;
+  layoutOptions?: LayoutOptions;
 }
 
 function idOf(element: ExportSceneElement): string {
@@ -121,8 +122,9 @@ export function buildExportScene({
   search,
   focusPath,
   createdAt = new Date(),
+  layoutOptions,
 }: BuildExportSceneOptions): ExportScene {
-  const layout = layoutRootItems(roots);
+  const layout = layoutRootItems(roots, layoutOptions);
   const positioned = new Map<string, ExportSceneElement>();
   const elements: ExportSceneElement[] = [];
 
@@ -136,13 +138,18 @@ export function buildExportScene({
             id: node.item.group.id,
             name: node.item.group.name,
             rect,
+            parentId: node.parentId,
             cornerRadius: EXPORT_CORNER_RADII.group,
             backgroundColor: node.item.group.backgroundColor,
             direction: node.item.group.layout.direction,
+            groupLevel: node.item.group.groupLevel,
             collapsed: node.item.collapsed,
             autoCollapsed: node.item.autoCollapsed,
             collapsedTrackFill: node.collapsedTrackFill,
+            collapsedBandFill: node.collapsedBandFill,
             labelSize: node.labelSize,
+            labelOrientation: node.labelOrientation,
+            presentationRole: node.item.presentationRole ?? 'normal',
           }
         : (() => {
             const presentation = getCapabilityPresentation(
@@ -160,6 +167,7 @@ export function buildExportScene({
               id: node.item.capability.id,
               name: node.item.capability.name,
               rect,
+              parentId: node.parentId,
               cornerRadius: geometry.cornerRadius,
               color: node.item.capability.color,
               textColor: readableTextColor(node.item.capability.color),
@@ -167,12 +175,14 @@ export function buildExportScene({
               renderedShape: geometry.renderedShapeId,
               geometry,
               direction: node.item.capability.layout.direction,
+              depth: node.item.capability.depth,
               iconNode: getCapabilityIconNode(node.item.capability.icon),
               compact: presentation.compact,
               minimal: presentation.minimal,
               nameLineCount: presentation.nameLineCount,
               hiddenDescendantCount: node.hiddenDescendantCount,
               contextOnly: node.item.contextOnly,
+              presentationRole: node.item.presentationRole ?? 'normal',
             };
           })();
     positioned.set(idOf(element), element);
@@ -185,8 +195,10 @@ export function buildExportScene({
     const element = positioned.get(id);
     return element ? [element] : [];
   });
-  const logicalWidth = Math.max(1, ...rootElements.map((element) => element.rect.x + element.rect.width));
-  const logicalHeight = Math.max(1, ...rootElements.map((element) => element.rect.y + element.rect.height));
+  const logicalWidth = layoutOptions?.width
+    ?? Math.max(1, ...rootElements.map((element) => element.rect.x + element.rect.width));
+  const logicalHeight = layoutOptions?.height
+    ?? Math.max(1, ...rootElements.map((element) => element.rect.y + element.rect.height));
   const legend = buildLegend(elements);
   const contextLines = [
     focusPath && focusPath.length > 0 ? `Fokus: ${focusPath.join(' › ')}` : undefined,

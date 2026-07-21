@@ -2,7 +2,7 @@ import type { BuildExportSceneOptions } from './scene';
 import { buildExportScene } from './scene';
 import { renderSvg } from './svg';
 
-function fileSafe(value: string): string {
+export function fileSafe(value: string): string {
   const normalized = value
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -12,7 +12,7 @@ function fileSafe(value: string): string {
   return normalized || 'capability-map';
 }
 
-function localTimestamp(date: Date): string {
+export function localTimestamp(date: Date): string {
   const part = (value: number) => value.toString().padStart(2, '0');
   return `${date.getFullYear()}${part(date.getMonth() + 1)}${part(date.getDate())}-${part(date.getHours())}${part(date.getMinutes())}${part(date.getSeconds())}`;
 }

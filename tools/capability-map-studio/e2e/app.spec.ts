@@ -1,7 +1,14 @@
 import { expect, test, type Download, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
-async function downloadExport(page: Page, format: 'PDF' | 'PNG' | 'PPTX' | 'SVG'): Promise<Download> {
+type ExportMenuLabel =
+  | 'PDF'
+  | 'PNG'
+  | 'PPTX – aktuelle Darstellung'
+  | 'PPTX – vollständige Map'
+  | 'SVG';
+
+async function downloadExport(page: Page, format: ExportMenuLabel): Promise<Download> {
   await page.getByLabel('Exportieren', { exact: true }).click();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('menuitem', { name: `Als ${format} exportieren` }).click();
@@ -183,6 +190,48 @@ test('tiles an all-collapsed horizontal group track with vertical labels', async
   expect(metrics.firstWritingMode).toBe('vertical-rl');
   expect(metrics.secondWritingMode).toBe('vertical-rl');
   await expect(comparison).not.toHaveClass(/collapsed/);
+});
+
+test('tiles an all-collapsed vertical group band with horizontal labels', async ({ page }) => {
+  await page
+    .getByRole('button', { name: 'Strategy & Governance einklappen', exact: true })
+    .evaluate((element) => (element as HTMLButtonElement).click());
+  await page
+    .getByRole('button', { name: 'Market & Customer einklappen', exact: true })
+    .evaluate((element) => (element as HTMLButtonElement).click());
+
+  const first = page.locator('[data-id="strategy-governance-group"] section');
+  const second = page.locator('[data-id="market-customer-group"] section');
+  await expect(first).toHaveClass(/collapsed-band-fill/);
+  await expect(second).toHaveClass(/collapsed-band-fill/);
+
+  const metrics = await page.locator('.map-canvas').evaluate((canvas) => {
+    const node = (id: string) =>
+      canvas.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`);
+    const firstNode = node('strategy-governance-group');
+    const secondNode = node('market-customer-group');
+    const fullWidthNode = node('enablers-risk-group');
+    const openedNode = node('products-operations-group');
+    const firstLabel = firstNode?.querySelector('strong');
+    const secondLabel = secondNode?.querySelector('strong');
+    return {
+      firstWidth: Number.parseFloat(firstNode?.style.width ?? '0'),
+      secondWidth: Number.parseFloat(secondNode?.style.width ?? '0'),
+      firstHeight: Number.parseFloat(firstNode?.style.height ?? '0'),
+      openedHeight: Number.parseFloat(openedNode?.style.height ?? '0'),
+      firstX: Number.parseFloat(firstNode?.style.transform.match(/translate\(([^p]+)/)?.[1] ?? '0'),
+      secondX: Number.parseFloat(secondNode?.style.transform.match(/translate\(([^p]+)/)?.[1] ?? '0'),
+      fullWidth: Number.parseFloat(fullWidthNode?.style.width ?? '0'),
+      firstWritingMode: firstLabel ? getComputedStyle(firstLabel).writingMode : '',
+      secondWritingMode: secondLabel ? getComputedStyle(secondLabel).writingMode : '',
+    };
+  });
+
+  expect(metrics.firstWidth + metrics.secondWidth + 12).toBeCloseTo(metrics.fullWidth);
+  expect(metrics.secondX - metrics.firstX).toBeCloseTo(metrics.firstWidth + 12);
+  expect(metrics.firstHeight).toBeLessThan(metrics.openedHeight / 3);
+  expect(metrics.firstWritingMode).toBe('horizontal-tb');
+  expect(metrics.secondWritingMode).toBe('horizontal-tb');
 });
 
 test('focuses by double click and restores the previous viewport', async ({ page }) => {
@@ -372,7 +421,7 @@ test('exports a single-page vector PDF in A3 landscape with metadata and text', 
 test('exports one editable 16:9 PowerPoint slide with native shapes and text', async ({ page }) => {
   test.setTimeout(120_000);
   await page.getByRole('combobox', { name: 'Ansichtstiefe' }).selectOption('level-2');
-  const download = await downloadExport(page, 'PPTX');
+  const download = await downloadExport(page, 'PPTX – aktuelle Darstellung');
   const pptx = await readFile(await download.path());
   const { default: JSZip } = await import('jszip');
   const archive = await JSZip.loadAsync(pptx);
@@ -386,13 +435,12 @@ test('exports one editable 16:9 PowerPoint slide with native shapes and text', a
   expect(pptx.subarray(0, 2).toString('ascii')).toBe('PK');
   expect(Object.keys(archive.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path))).toHaveLength(1);
   expect(presentation).toContain('cx="12191695" cy="6858000"');
-  expect(slide).toContain('Enterprise Capability Map');
+  expect(slide).toContain('Enterprise Capability Map – Ebene 2');
   expect(slide).toContain('Strategy');
   expect(slide?.match(/<p:sp>/g)?.length ?? 0).toBeGreaterThan(100);
   expect(slide?.match(/prst="roundRect"/g)?.length ?? 0).toBeGreaterThan(20);
-  expect(slide).toContain('prst="chevron"');
   expect(slide).toContain('strategy capability name');
-  expect(media.some((path) => path.endsWith('.svg'))).toBe(true);
+  expect(media.some((path) => path.endsWith('.svg'))).toBe(false);
 
   if (!slide) throw new Error('PowerPoint-Folie fehlt');
   const rootGroup = roundedShapeGeometry(
@@ -407,10 +455,117 @@ test('exports one editable 16:9 PowerPoint slide with native shapes and text', a
   const legendGroup = roundedShapeGeometry(nativeShapeByName(slide, 'Legend group'));
 
   expect(rootGroup.adjustment).not.toBe(nestedGroup.adjustment);
-  expect(rootGroup.radiusEmu).toBeCloseTo(nestedGroup.radiusEmu, -1);
-  expect(capability.radiusEmu / rootGroup.radiusEmu).toBeCloseTo(0.9, 2);
-  expect(legendGroup.radiusEmu / rootGroup.radiusEmu).toBeCloseTo(0.3, 2);
-  await expect(page.getByText('PPTX erstellt')).toBeVisible();
+  expect(rootGroup.radiusEmu).toBeCloseTo(nestedGroup.radiusEmu, -2);
+  expect(capability.radiusEmu / rootGroup.radiusEmu).toBeGreaterThan(0.5);
+  expect(capability.radiusEmu / rootGroup.radiusEmu).toBeLessThan(1);
+  expect(legendGroup.radiusEmu / rootGroup.radiusEmu).toBeGreaterThan(0.2);
+  expect(legendGroup.radiusEmu / rootGroup.radiusEmu).toBeLessThan(0.5);
+  expect(slide).toContain('sz="2800"');
+  expect(slide).toContain('sz="1000"');
+  expect(nativeShapeByName(slide, 'Slide title')).toContain('b="1"');
+  expect(nativeShapeByName(slide, 'strategy-governance-group group name')).toContain('b="1"');
+  expect(nativeShapeByName(slide, 'strategy-governance-group group name')).toContain('sz="1400"');
+  expect(nativeShapeByName(slide, 'enterprise-direction-group group name')).toContain('b="1"');
+  expect(nativeShapeByName(slide, 'enterprise-direction-group group name')).toContain('sz="1200"');
+  expect(nativeShapeByName(slide, 'strategy capability name · Strategy')).not.toContain('b="1"');
+  await expect(page.getByText('PPTX – aktuelle Darstellung erstellt')).toBeVisible();
+});
+
+test('exports the complete map with one detail slide per expandable capability', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.getByRole('combobox', { name: 'Ansichtstiefe' }).selectOption('level-3');
+  await page.getByPlaceholder('Capabilities durchsuchen').fill('Strategy');
+  const download = await downloadExport(page, 'PPTX – vollständige Map');
+  const pptx = await readFile(await download.path());
+  const { default: JSZip } = await import('jszip');
+  const archive = await JSZip.loadAsync(pptx);
+  const slidePaths = Object.keys(archive.files)
+    .filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path))
+    .sort((left, right) => Number(left.match(/\d+/)?.[0]) - Number(right.match(/\d+/)?.[0]));
+  const slides: string[] = [];
+  for (const path of slidePaths) {
+    const slide = archive.file(path);
+    if (!slide) throw new Error(`PowerPoint-Folie fehlt: ${path}`);
+    slides.push(await slide.async('text'));
+  }
+  const masterPaths = Object.keys(archive.files)
+    .filter((path) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(path));
+  const masters: string[] = [];
+  for (const path of masterPaths) {
+    const master = archive.file(path);
+    if (master) masters.push(await master.async('text'));
+  }
+  const media = Object.keys(archive.files).filter((path) => path.startsWith('ppt/media/'));
+
+  expect(download.suggestedFilename()).toMatch(
+    /^enterprise-capabilities-vollstaendig-\d{8}-\d{6}\.pptx$/,
+  );
+  expect(slidePaths).toHaveLength(95);
+  expect(masters.some((master) => master.includes('Enterprise Capability Map – Übersicht'))).toBe(true);
+  expect(masters.some((master) => master.includes('Enterprise Capability Map – Ebene 1'))).toBe(true);
+  expect(masters.some((master) => master.includes('Enterprise Capability Map – Ebene 2'))).toBe(true);
+  expect(masters.some((master) => master.includes('Enterprise Capability Map – Ebene 4'))).toBe(true);
+  expect(slides[2]).toContain('Strategy &amp; Governance');
+  expect(nativeShapeByName(slides[0] ?? '', 'strategy-governance-group group name'))
+    .toContain('sz="1600"');
+  expect(nativeShapeByName(slides[0] ?? '', 'strategy-governance-group group name'))
+    .toContain('b="1"');
+  expect(nativeShapeByName(slides[1] ?? '', 'strategy-governance-group group name'))
+    .toContain('sz="1200"');
+  expect(nativeShapeByName(slides[1] ?? '', 'enterprise-direction-group group name'))
+    .toContain('sz="1000"');
+  expect(nativeShapeByName(slides[1] ?? '', 'strategy capability name · Strategy'))
+    .toContain('sz="700"');
+  expect(nativeShapeByName(slides[2] ?? '', 'strategy capability name · Strategy'))
+    .toContain('sz="900"');
+  expect(slides.slice(1, 7).every((slide) =>
+    !slide.includes('hidden descendants badge') &&
+    !slide.includes('hidden descendants count'))).toBe(true);
+  expect(slides[1]).toContain('Corporate Governance');
+  expect(slides[1]).toContain('Channel Strategy');
+  expect(slides[1]).toContain('Customer Service');
+  expect(slides[7]).toContain(
+    'Strategy &amp; Governance › Enterprise Direction · Fokus: Strategy',
+  );
+  expect(slides[10]).toContain(
+    'Strategy &amp; Governance › Enterprise Direction · Fokus: Strategic Foresight',
+  );
+  expect(slides[94]).toContain('Technology, Risk &amp; Enablers');
+  expect(nativeShapeByName(slides[94] ?? '', 'Slide context')).toContain(
+    'Fokus: Procurement &amp; Facilities › Operating Model › Execution System',
+  );
+  expect(nativeShapeByName(slides[94] ?? '', 'Export metadata')).not.toContain('Fokus:');
+  expect(masters.filter((master) => master.includes('Enterprise Capability Map')).every(
+    (master) => master.includes('sz="2800"'),
+  )).toBe(true);
+  expect(slides.every((slide) => slide?.includes('sz="1000"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="1400"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="1200"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="800"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="700"'))).toBe(true);
+  expect(slides.some((slide) => slide?.includes('sz="600"'))).toBe(true);
+  expect(slides.every((slide) => slide?.includes('Vollständiger Export'))).toBe(true);
+  expect(
+    Math.min(
+      ...slides.flatMap((slide) =>
+        [...slide.matchAll(/\bsz="(\d+)"/g)].map((match) => Number(match[1])),
+      ),
+    ),
+  ).toBeGreaterThanOrEqual(100);
+  expect(slides.some((slide) => slide?.includes('prst="chevron"'))).toBe(true);
+  const levelTwoMaster = masters.find((master) =>
+    master.includes('Enterprise Capability Map – Ebene 2')) ?? '';
+  expect(nativeShapeByName(levelTwoMaster, 'Slide title')).toContain('b="1"');
+  expect(nativeShapeByName(slides[7] ?? '', 'Slide context')).not.toContain('b="1"');
+  expect(nativeShapeByName(slides[7] ?? '', 'strategy capability surface')).toContain('2D7D6F');
+  expect(nativeShapeByName(slides[7] ?? '', 'strategy-governance-group group surface'))
+    .not.toContain('2D7D6F');
+  expect(nativeShapeByName(slides[7] ?? '', 'enterprise-direction-group group surface'))
+    .not.toContain('2D7D6F');
+  expect(nativeShapeByName(slides[7] ?? '', 'market-customer-group group name'))
+    .not.toContain('b="1"');
+  expect(media.every((path) => !path.endsWith('.png'))).toBe(true);
+  await expect(page.getByText('PPTX – vollständige Map erstellt')).toBeVisible();
 });
 
 test('switches between map and editor at tablet width', async ({ page }) => {
